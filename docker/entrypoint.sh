@@ -19,6 +19,8 @@ if [ ! -f "$INIT_MARKER" ]; then
     echo "Installing dependencies from requirements.txt..."
     pip install --no-cache-dir -r $REPO_DIR/requirements.txt
 
+    conda install mpi4py -y
+
     export PYTHONPATH="$REPO_DIR:$REPO_DIR/submodules/HunyuanVideo:$PYTHONPATH"
     export PYTHONPATH="$REPO_DIR:$REPO_DIR/configs:$PYTHONPATH"
     export PATH="$REPO_DIR:$PATH"

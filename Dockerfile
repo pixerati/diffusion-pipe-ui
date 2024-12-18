@@ -15,7 +15,7 @@ ENV PYTHON_VERSION=3.12
 ENV CONDA_DIR=/opt/conda
 ENV PATH="$CONDA_DIR/bin:$PATH"
 ENV MODEL_DIR="/models" 
-ENV OUTPUT_DIR="/output"
+ENV OUTPUT_DIR="/output"    
 ENV POETRY_HOME="$CONDA_DIR"
 ENV PATH="$POETRY_HOME/bin:$PATH"
 
@@ -48,7 +48,8 @@ RUN apt-get update && apt-get install -y git-lfs && git lfs install
 
 # Install nginx
 RUN apt-get update && \
-apt-get install -y nginx
+apt-get install -y nginx && \
+apt-get install libopenmpi-dev -y
 
 COPY docker/default /etc/nginx/sites-available/default
 

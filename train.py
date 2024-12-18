@@ -185,7 +185,6 @@ def train(config_path, args=None):
     # https://github.com/pytorch/pytorch/issues/11201
     import torch.multiprocessing
     torch.multiprocessing.set_sharing_strategy('file_system')
-
     with open(config_path) as f:
         # Inline TOML tables are not pickleable, which messes up the multiprocessing dataset stuff. This is a workaround.
         config = json.loads(json.dumps(toml.load(f)))
