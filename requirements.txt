@@ -20,3 +20,4 @@ einops
 accelerate
 loguru
 flash-attn
+gradio

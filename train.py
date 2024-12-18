@@ -27,17 +27,6 @@ from utils.patches import apply_patches
 
 TIMESTEP_QUANTILES_FOR_EVAL = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--config', help='Path to TOML configuration file.')
-parser.add_argument('--local_rank', type=int, default=-1,
-                    help='local rank passed from distributed launcher')
-parser.add_argument('--resume_from_checkpoint', action='store_true', default=None, help='resume training from the most recent checkpoint')
-parser.add_argument('--regenerate_cache', action='store_true', default=None, help='Force regenerate cache. Useful if none of the files have changed but their contents have, e.g. modified captions.')
-parser.add_argument('--cache_only', action='store_true', default=None, help='Cache model inputs then exit.')
-parser = deepspeed.add_config_arguments(parser)
-args = parser.parse_args()
-
-
 # Monkeypatch this so it counts all layer parameters, not just trainable parameters.
 # This helps it divide the layers between GPUs more evenly when training a LoRA.
 def _count_all_layer_params(self):
@@ -171,7 +160,22 @@ def evaluate(model_engine, eval_dataloaders, tb_writer, step, eval_gradient_accu
         _evaluate(model_engine, eval_dataloaders, tb_writer, step, eval_gradient_accumulation_steps)
 
 
-if __name__ == '__main__':
+def train(config_path, args=None):
+    """
+    Main training function that can be called from other scripts.
+    
+    Args:
+        config_path: Path to the TOML configuration file
+        args: Optional argparse.Namespace object with CLI arguments. If None, default values will be used.
+    """
+    if args is None:
+        args = argparse.Namespace(
+            local_rank=-1,
+            resume_from_checkpoint=False,
+            regenerate_cache=False,
+            cache_only=False
+        )
+
     apply_patches()
 
     # needed for broadcasting Queue in dataset.py
@@ -182,7 +186,7 @@ if __name__ == '__main__':
     import torch.multiprocessing
     torch.multiprocessing.set_sharing_strategy('file_system')
 
-    with open(args.config) as f:
+    with open(config_path) as f:
         # Inline TOML tables are not pickleable, which messes up the multiprocessing dataset stuff. This is a workaround.
         config = json.loads(json.dumps(toml.load(f)))
 
@@ -216,15 +220,6 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError(f'Model type {model_type} is not implemented')
 
-    # import sys, PIL
-    # test_image = sys.argv[1]
-    # with torch.no_grad():
-    #     vae = model.get_vae().to('cuda')
-    #     latents = dataset.encode_pil_to_latents(PIL.Image.open(test_image), vae)
-    #     pil_image = dataset.decode_latents_to_pil(latents, vae)
-    #     pil_image.save('test.jpg')
-    # quit()
-
     with open(config['dataset']) as f:
         dataset_config = toml.load(f)
     ds_config = {
@@ -254,7 +249,7 @@ if __name__ == '__main__':
 
     dataset_manager.cache()
     if args.cache_only:
-        quit()
+        return
 
     model.load_diffusion_model()
 
@@ -269,7 +264,7 @@ if __name__ == '__main__':
     if not resume_from_checkpoint and is_main_process():
         run_dir = os.path.join(config['output_dir'], datetime.now(timezone.utc).strftime('%Y%m%d_%H-%M-%S'))
         os.makedirs(run_dir, exist_ok=True)
-        shutil.copy(args.config, run_dir)
+        shutil.copy(config_path, run_dir)
     # wait for all processes then get the most recent dir (may have just been created)
     dist.barrier()
     run_dir = get_most_recent_run_dir(config['output_dir'])
@@ -484,3 +479,19 @@ if __name__ == '__main__':
 
     if is_main_process():
         print('TRAINING COMPLETE!')
+    
+    return run_dir
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--config', help='Path to TOML configuration file.')
+    parser.add_argument('--local_rank', type=int, default=-1,
+                    help='local rank passed from distributed launcher')
+    parser.add_argument('--resume_from_checkpoint', action='store_true', default=None, help='resume training from the most recent checkpoint')
+    parser.add_argument('--regenerate_cache', action='store_true', default=None, help='Force regenerate cache. Useful if none of the files have changed but their contents have, e.g. modified captions.')
+    parser.add_argument('--cache_only', action='store_true', default=None, help='Cache model inputs then exit.')
+    parser = deepspeed.add_config_arguments(parser)
+    args = parser.parse_args()
+    
+    train(args.config, args)
