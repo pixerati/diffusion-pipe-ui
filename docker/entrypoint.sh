@@ -10,6 +10,8 @@ echo "DOWNLOAD_MODELS is: $DOWNLOAD_MODELS"
 source /opt/conda/etc/profile.d/conda.sh
 conda activate pyenv
 
+
+
 if [ ! -f "$INIT_MARKER" ]; then
     echo "First-time initialization..."
 
@@ -18,12 +20,6 @@ if [ ! -f "$INIT_MARKER" ]; then
 
     echo "Installing dependencies from requirements.txt..."
     pip install --no-cache-dir -r $REPO_DIR/requirements.txt
-
-    conda install mpi4py -y
-
-    export PYTHONPATH="$REPO_DIR:$REPO_DIR/submodules/HunyuanVideo:$PYTHONPATH"
-    export PYTHONPATH="$REPO_DIR:$REPO_DIR/configs:$PYTHONPATH"
-    export PATH="$REPO_DIR:$PATH"
 
     if [ "$DOWNLOAD_MODELS" = "true" ]; then
         echo "DOWNLOAD_MODELS is true, downloading models..."
@@ -71,4 +67,16 @@ else
     echo "Container already initialized. Skipping first-time setup."
 fi
 
-exec python /workspace/diffusion-pipe/gradio_interface.py
+echo "Adding environmnent variables"
+export PYTHONPATH="$REPO_DIR:$REPO_DIR/submodules/HunyuanVideo:$PYTHONPATH"
+export PATH="$REPO_DIR/configs:$PATH"
+export PATH="$REPO_DIR:$PATH"
+
+echo $PATH
+echo $PYTHONPATH
+
+cd /workspace/diffusion-pipe
+
+# Use conda python instead of system python
+echo "Starting Gradio interface..."
+exec python gradio_interface.py

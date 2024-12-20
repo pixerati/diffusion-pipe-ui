@@ -16,13 +16,14 @@ import zipfile
 # Importando funções necessárias do train.py
 from train import train
 
-TESTING = True
+
+DEVELOPMENT = False
 
 # Diretórios de trabalho
-MODEL_DIR = os.path.join(os.getcwd(), "models") if TESTING else "/workspace/models"
-BASE_DATASET_DIR = os.path.join(os.getcwd(), "datasets") if TESTING else "/workspace/datasets"
-OUTPUT_DIR = os.path.join(os.getcwd(), "outputs") if TESTING else "/workspace/outputs"
-CONFIG_DIR = os.path.join(os.getcwd(), "configs") if TESTING else "/workspace/configs"
+MODEL_DIR = os.path.join(os.getcwd(), "models") if DEVELOPMENT else "/workspace/models"
+BASE_DATASET_DIR = os.path.join(os.getcwd(), "datasets") if DEVELOPMENT else "/workspace/datasets"
+OUTPUT_DIR = os.path.join(os.getcwd(), "outputs") if DEVELOPMENT else "/workspace/outputs"
+CONFIG_DIR = os.path.join(os.getcwd(), "configs") if DEVELOPMENT else "/workspace/configs"
 
 # Maximum number of media to display in the gallery
 MAX_MEDIA = 50
@@ -815,4 +816,5 @@ with gr.Blocks(theme=theme) as demo:
     )
 
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860)
+    demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=["/workspace", "."])
+    

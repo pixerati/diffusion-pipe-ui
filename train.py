@@ -25,6 +25,9 @@ import utils.saver
 from utils.isolate_rng import isolate_rng
 from utils.patches import apply_patches
 
+# Add this line to get the directory containing the script
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+
 TIMESTEP_QUANTILES_FOR_EVAL = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
 # Monkeypatch this so it counts all layer parameters, not just trainable parameters.
@@ -185,6 +188,7 @@ def train(config_path, args=None):
     # https://github.com/pytorch/pytorch/issues/11201
     import torch.multiprocessing
     torch.multiprocessing.set_sharing_strategy('file_system')
+
     with open(config_path) as f:
         # Inline TOML tables are not pickleable, which messes up the multiprocessing dataset stuff. This is a workaround.
         config = json.loads(json.dumps(toml.load(f)))
@@ -490,7 +494,3 @@ if __name__ == '__main__':
     parser.add_argument('--resume_from_checkpoint', action='store_true', default=None, help='resume training from the most recent checkpoint')
     parser.add_argument('--regenerate_cache', action='store_true', default=None, help='Force regenerate cache. Useful if none of the files have changed but their contents have, e.g. modified captions.')
     parser.add_argument('--cache_only', action='store_true', default=None, help='Cache model inputs then exit.')
-    parser = deepspeed.add_config_arguments(parser)
-    args = parser.parse_args()
-    
-    train(args.config, args)

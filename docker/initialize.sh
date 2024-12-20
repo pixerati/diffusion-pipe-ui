@@ -2,6 +2,8 @@
 
 echo "pod started"
 
+
+
 if [[ $PUBLIC_KEY ]]
 then
     mkdir -p ~/.ssh
@@ -26,19 +28,21 @@ fi
 service nginx start
 
 # Start JupyterLab
-jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.allow_origin='*' --NotebookApp.token='' --ServerApp.preferred_dir=/workspace &
+jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.allow_origin='*' --NotebookApp.token='' --ServerApp.terminado_settings='{"shell_command":["/bin/bash"]}' &
 echo "JupyterLab started"
 
-# # Check if the flux model is present
-# bash /check_files.sh
+mkdir -p /workspace
 
-# Check if there is a venv directory, if so, activate it
-# if [ -d "/workspace/venv" ]; then
-#     echo "venv directory found, activating it"
-#     source /workspace/venv/bin/activate
-# fi
+# Check if diffusion-pipe directory exists in /workspace
+if [ ! -d "/workspace/diffusion-pipe" ]; then
+    echo "Copying diffusion-pipe to /workspace..."
+    cp -r /diffusion-pipe /workspace/
+else
+    echo "diffusion-pipe directory already exists in /workspace, skipping copy"
+fi
 
-# Execute the entrypoint script
+cp -f /entrypoint.sh /workspace/entrypoint.sh
+
 bash /workspace/entrypoint.sh
 
 sleep infinity
