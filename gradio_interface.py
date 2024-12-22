@@ -1,3 +1,6 @@
+import queue
+import subprocess
+import threading
 import gradio as gr
 import os
 from datetime import datetime
@@ -12,9 +15,6 @@ import argparse
 import toml
 import shutil
 import zipfile
-
-# Importando funções necessárias do train.py
-from train import train
 
 
 DEVELOPMENT = False
@@ -31,12 +31,35 @@ MAX_MEDIA = 50
 # Determine if running on Runpod by checking the environment variable
 IS_RUNPOD = os.getenv("IS_RUNPOD", "false").lower() == "true"
 
+CONDA_DIR = os.getenv("CONDA_DIR", "/opt/conda")  # Directory where Conda is installed in the Docker container
+
 # Maximum upload size in MB (Gradio expects max_file_size in MB)
 MAX_UPLOAD_SIZE_MB = 500 if IS_RUNPOD else None  # 500MB or no limit
 
 # Criar diretórios se não existirem
 for dir_path in [MODEL_DIR, BASE_DATASET_DIR, OUTPUT_DIR, CONFIG_DIR]:
     os.makedirs(dir_path, exist_ok=True)
+    
+    
+log_queue = queue.Queue()
+
+def read_subprocess_output(proc, log_queue):
+    for line in iter(proc.stdout.readline, b''):
+        decoded_line = line.decode('utf-8')
+        log_queue.put(decoded_line)
+    proc.stdout.close()
+    proc.wait()
+
+def update_logs(log_box, subprocess_proc):
+    new_logs = ""
+    while not log_queue.empty():
+        new_logs += log_queue.get()
+    return log_box + new_logs
+
+def clear_logs():
+    while not log_queue.empty():
+        log_queue.get()
+    return ""
     
 def create_dataset_config(dataset_path: str,
                         config_dir: str,
@@ -202,7 +225,9 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
                 gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
                 gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
                 checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-                video_clip_mode):
+                video_clip_mode,
+                # num_gpus,  # Adicionado parâmetro num_gpus
+                training_process_state):
     try:
         # Validar inputs
         if not dataset_path or not os.path.exists(dataset_path) or dataset_path == BASE_DATASET_DIR:
@@ -280,21 +305,67 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
         )
 
         # Criar args para passar para a função train
-        args = argparse.Namespace(
-            local_rank=-1,
-            resume_from_checkpoint=False,
-            regenerate_cache=False,
-            cache_only=False
-        )
-
-        # Chamar a função train do train.py
-        run_dir = train(training_config_path, args)
+        # args = argparse.Namespace(
+        #     local_rank=-1,
+        #     resume_from_checkpoint=False,
+        #     regenerate_cache=False,
+        #     cache_only=False
+        # )
         
-        return f"Training completed successfully! Output directory: {run_dir}"
+        conda_activate_path = "/opt/conda/etc/profile.d/conda.sh"
+        conda_env_name = "pyenv"
+        # conda_activate_path = os.path.join(CONDA_DIR, "etc", "profile.d", "conda.sh")
+        # conda_env_name = "pyenv"
+        
+        if not os.path.isfile(conda_activate_path):
+            return "Error: Conda activation script not found"
+        
+        cmd = (
+            f"bash -c 'source {conda_activate_path} && "
+            f"conda activate {conda_env_name} && "
+            f"NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 deepspeed --num_gpus=1 "
+            f"train.py --deepspeed --config {training_config_path}'"          
+        )
+            
+        proc = subprocess.Popen(
+            cmd,
+            shell=True,  # Necessário para comandos de shell complexos
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            #text=True,
+            # start_new_session=True, 
+            universal_newlines=False  # Para lidar com bytes
+        )
+        
+        thread = threading.Thread(target=read_subprocess_output, args=(proc, log_queue))
+        thread.start()
+        
+        training_process_state = proc
+
+        return "Training started! Logs will appear below. \n", training_process_state
 
     except Exception as e:
-        return f"Error during training: {str(e)}"
+        training_process_state = None
+        return f"Error during training: {str(e)}", training_process_state
     
+def stop_training(training_process_state):
+    if training_process_state is None:
+        return "No training process is currently running."
+
+    proc = training_process_state
+    if proc.poll() is not None:
+        return "Training process has already finished."
+
+    try:
+        proc.terminate()  # Tenta encerrar graciosamente
+        try:
+            proc.wait(timeout=5)  # Espera 5 segundos para encerrar
+            return "Training process terminated gracefully."
+        except subprocess.TimeoutExpired:
+            proc.kill()  # Força a terminação
+            return "Training process killed forcefully."
+    except Exception as e:
+        return f"Error stopping training process: {str(e)}"
     
 def upload_dataset(files, current_dataset, action, dataset_name=None):
     """
@@ -472,6 +543,7 @@ with gr.Blocks(theme=theme) as demo:
             return gr.update(interactive=False)
     
     current_dataset_state = gr.State(None)
+    training_process_state = gr.State(None)
     
     dataset_name_input.change(
         fn=toggle_start_button, 
@@ -791,18 +863,60 @@ with gr.Blocks(theme=theme) as demo:
     
         with gr.Row():
             with gr.Column(scale=1):
-                    train_button = gr.Button("Start Training")
-                    with gr.Row():
-                        with gr.Column(scale=1):
-                            output = gr.Textbox(
-                                label="Output Logs",
-                                lines=20,
-                                interactive=False,
-                                elem_id="log_box"
-                            )
+                train_button = gr.Button("Start Training")
+                stop_button = gr.Button("Stop Training")
+                with gr.Row():
+                    with gr.Column(scale=1):
+                        output = gr.Textbox(
+                            label="Output Logs",
+                            lines=20,
+                            interactive=False,
+                            elem_id="log_box"
+                        )
+    
+    
+    def handle_train_click(
+        dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
+        transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
+        gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
+        gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
+        checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
+        video_clip_mode,
+        # num_gpus,  # Adicionado parâmetro num_gpus
+        training_process_state   # gr.State para armazenar o subprocesso
+    ):
+        message, training_process_state = train_model(
+            dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
+            transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
+            gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
+            gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
+            checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
+            video_clip_mode,
+            # num_gpus,
+            training_process_state 
+        )
+        return message, training_process_state 
 
-    train_button.click(
-        fn=train_model,
+    def handle_stop_click(training_process_state):
+        message = stop_training(training_process_state)
+        return message
+
+    def refresh_logs(log_box, training_proc):
+        return update_logs(log_box, training_proc)
+    
+    log_timer = gr.Timer(0.5, active=False) 
+    
+    log_timer.tick(
+        fn=refresh_logs,
+        inputs=[output, training_process_state],
+        outputs=output
+    )
+    
+    def activate_timer():
+        return gr.update(active=True)
+    
+    train_click = train_button.click(
+        fn=handle_train_click,
         inputs=[
             dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
             transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
@@ -810,10 +924,35 @@ with gr.Blocks(theme=theme) as demo:
             num_ar_buckets, frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
             eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
             activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-            video_clip_mode
+            video_clip_mode,
+            # gr.Number(label="Number of GPUs", value=1, info="Number of GPUs to use"),
+            training_process_state  # Passar o estado atual
         ],
-        outputs=output
+        outputs=[output, training_process_state],
+        api_name=None
+    ).then(
+        fn=lambda: gr.update(active=True),  # Ativar o Timer
+        inputs=None,
+        outputs=log_timer
     )
+    
+    def deactivate_timer():
+        return gr.update(active=False)
+    
+    stop_click = stop_button.click(
+        fn=handle_stop_click,
+        inputs=[training_process_state],
+        outputs=output,
+        api_name=None
+    ).then(
+        fn=lambda: gr.update(active=False),  # Desativar o Timer
+        inputs=None,
+        outputs=log_timer
+    )
+    
+    def periodic_log_update(log_box, training_process):
+        return update_logs(log_box, training_process)
+    
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=["/workspace", "."])

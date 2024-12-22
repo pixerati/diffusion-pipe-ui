@@ -80,6 +80,13 @@ RUN pip install jupyterlab ipywidgets jupyter-archive jupyter_contrib_nbextensio
 
 EXPOSE 8888
 
+# Debug
+# RUN $CONDA_DIR/bin/conda run -n pyenv \
+#     pip install debugpy
+
+# EXPOSE 5678
+
+
 # Copy the entire project
 COPY --chmod=755 . /diffusion-pipe
 

@@ -80,3 +80,4 @@ cd /workspace/diffusion-pipe
 # Use conda python instead of system python
 echo "Starting Gradio interface..."
 exec python gradio_interface.py
+# exec python -m debugpy --wait-for-client --listen 0.0.0.0:5678 gradio_interface.py
