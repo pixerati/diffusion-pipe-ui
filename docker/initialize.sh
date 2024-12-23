@@ -34,12 +34,8 @@ echo "JupyterLab started"
 mkdir -p /workspace
 
 # Check if diffusion-pipe directory exists in /workspace
-if [ ! -d "/workspace/diffusion-pipe" ]; then
-    echo "Copying diffusion-pipe to /workspace..."
-    cp -r /diffusion-pipe /workspace/
-else
-    echo "diffusion-pipe directory already exists in /workspace, skipping copy"
-fi
+echo "Copying diffusion-pipe to /workspace..."
+cp -rf /diffusion-pipe /workspace/
 
 cp -f /entrypoint.sh /workspace/entrypoint.sh
 

@@ -131,7 +131,7 @@ def create_training_config(
     rank: int = 8,
     
     # Optimizer parameters
-    optimizer_type: str = "adamw",
+    optimizer_type: str = "adamw_optimi",
     lr: float = 1e-4,
     betas: str = "(0.9, 0.999)",
     weight_decay: float = 0.01,
@@ -250,7 +250,7 @@ def extract_config_values(config):
     vae_path = config.get("model", {}).get("vae_path", "")
     llm_path = config.get("model", {}).get("llm_path", "")
     clip_path = config.get("model", {}).get("clip_path", "")
-    optimizer_type = config.get("optimizer", {}).get("type", "adamw")
+    optimizer_type = config.get("optimizer", {}).get("type", "adamw_optimi")
     betas = config.get("optimizer", {}).get("betas", [0.9, 0.99])
     weight_decay = config.get("optimizer", {}).get("weight_decay", 0.01)
     eps = config.get("optimizer", {}).get("eps", 1e-8)
@@ -596,7 +596,7 @@ def update_ui_with_config(config_values):
         "vae_path": "",
         "llm_path": "",
         "clip_path": "",
-        "optimizer_type": "adamw",
+        "optimizer_type": "adamw_optimi",
         "betas": json.dumps([0.9, 0.99]),
         "weight_decay": 0.01,
         "eps": 1e-8,
@@ -1090,7 +1090,7 @@ with gr.Blocks(theme=theme) as demo:
         with gr.Row():
             optimizer_type = gr.Textbox(
                 label="Optimizer Type",
-                value="adamw_optimizer",
+                value="adamw_optimi",
                 info="Type of optimizer"
             )
             betas = gr.Textbox(
