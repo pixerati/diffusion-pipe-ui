@@ -14,8 +14,7 @@ ENV TZ=Etc/UTC
 ENV PYTHON_VERSION=3.12
 ENV CONDA_DIR=/opt/conda
 ENV PATH="$CONDA_DIR/bin:$PATH"
-ENV POETRY_HOME="$CONDA_DIR"
-ENV PATH="$POETRY_HOME/bin:$PATH"
+ENV NUM_GPUS=1
 
 # Install dependencies required for Miniconda
 RUN apt-get update -y && \
