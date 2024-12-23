@@ -1,4 +1,5 @@
 import queue
+import signal
 import subprocess
 import threading
 import gradio as gr
@@ -16,10 +17,9 @@ import toml
 import shutil
 import zipfile
 
-
 DEVELOPMENT = False
 
-# Diretórios de trabalho
+# Working directories
 MODEL_DIR = os.path.join(os.getcwd(), "models") if DEVELOPMENT else "/workspace/models"
 BASE_DATASET_DIR = os.path.join(os.getcwd(), "datasets") if DEVELOPMENT else "/workspace/datasets"
 OUTPUT_DIR = os.path.join(os.getcwd(), "outputs") if DEVELOPMENT else "/workspace/outputs"
@@ -36,11 +36,13 @@ CONDA_DIR = os.getenv("CONDA_DIR", "/opt/conda")  # Directory where Conda is ins
 # Maximum upload size in MB (Gradio expects max_file_size in MB)
 MAX_UPLOAD_SIZE_MB = 500 if IS_RUNPOD else None  # 500MB or no limit
 
-# Criar diretórios se não existirem
+# Create directories if they don't exist
 for dir_path in [MODEL_DIR, BASE_DATASET_DIR, OUTPUT_DIR, CONFIG_DIR]:
     os.makedirs(dir_path, exist_ok=True)
-    
-    
+
+process_dict = {}
+process_lock = threading.Lock()
+
 log_queue = queue.Queue()
 
 def read_subprocess_output(proc, log_queue):
@@ -49,6 +51,10 @@ def read_subprocess_output(proc, log_queue):
         log_queue.put(decoded_line)
     proc.stdout.close()
     proc.wait()
+    with process_lock:
+        pid = proc.pid
+        if pid in process_dict:
+            del process_dict[pid]
 
 def update_logs(log_box, subprocess_proc):
     new_logs = ""
@@ -60,7 +66,7 @@ def clear_logs():
     while not log_queue.empty():
         log_queue.get()
     return ""
-    
+
 def create_dataset_config(dataset_path: str,
                         config_dir: str,
                         num_repeats: int, 
@@ -193,31 +199,150 @@ def get_datasets():
         datasets.append(dataset)
     return datasets
 
+def load_training_config(dataset_name):
+    training_config_path = os.path.join(CONFIG_DIR, dataset_name, "training_config.toml")
+    dataset_config_path = os.path.join(CONFIG_DIR, dataset_name, "dataset_config.toml")
+    
+    config = {}
+    
+    # Load training configuration
+    if not os.path.exists(training_config_path):
+        return None, f"Training configuration file not found for the dataset '{dataset_name}'."
+    
+    try:
+        with open(training_config_path, "r") as f:
+            training_config = toml.load(f)
+        config.update(training_config)
+    except Exception as e:
+        return None, f"Error loading training configuration: {str(e)}"
+    
+    # Load dataset configuration
+    if not os.path.exists(dataset_config_path):
+        return None, f"Dataset configuration file not found for the dataset '{dataset_name}'."
+    
+    try:
+        with open(dataset_config_path, "r") as f:
+            dataset_config = toml.load(f)
+        config["dataset"] = dataset_config
+    except Exception as e:
+        return None, f"Error loading dataset configuration: {str(e)}"
+    
+    return config, None
+
+def extract_config_values(config):
+    """
+    Extracts training parameters from the configuration dictionary.
+
+    Args:
+        config (dict): Dictionary containing training configurations.
+
+    Returns:
+        dict: Dictionary with the extracted values.
+    """
+    training_params = config.get("epochs", 1000)
+    batch_size = config.get("micro_batch_size_per_gpu", 1)
+    lr = config.get("optimizer", {}).get("lr", 2e-5)
+    save_every = config.get("save_every_n_epochs", 2)
+    eval_every = config.get("eval_every_n_epochs", 1)
+    rank = config.get("adapter", {}).get("rank", 32)
+    dtype = config.get("adapter", {}).get("dtype", "bfloat16")
+    transformer_path = config.get("model", {}).get("transformer_path", "")
+    vae_path = config.get("model", {}).get("vae_path", "")
+    llm_path = config.get("model", {}).get("llm_path", "")
+    clip_path = config.get("model", {}).get("clip_path", "")
+    optimizer_type = config.get("optimizer", {}).get("type", "adamw")
+    betas = config.get("optimizer", {}).get("betas", [0.9, 0.99])
+    weight_decay = config.get("optimizer", {}).get("weight_decay", 0.01)
+    eps = config.get("optimizer", {}).get("eps", 1e-8)
+    gradient_accumulation_steps = config.get("gradient_accumulation_steps", 4)
+    num_repeats = config.get("dataset", {}).get("num_repeats", 10)
+    resolutions = config.get("dataset", {}).get("resolutions", [512])
+    enable_ar_bucket = config.get("dataset", {}).get("enable_ar_bucket", True)
+    min_ar = config.get("dataset", {}).get("min_ar", 0.5)
+    max_ar = config.get("dataset", {}).get("max_ar", 2.0)
+    num_ar_buckets = config.get("dataset", {}).get("num_ar_buckets", 7)
+    frame_buckets = config.get("dataset", {}).get("frame_buckets", [1, 33, 65])
+    gradient_clipping = config.get("gradient_clipping", 1.0)
+    warmup_steps = config.get("warmup_steps", 100)
+    eval_before_first_step = config.get("eval_before_first_step", True)
+    eval_micro_batch_size_per_gpu = config.get("eval_micro_batch_size_per_gpu", 1)
+    eval_gradient_accumulation_steps = config.get("eval_gradient_accumulation_steps", 1)
+    checkpoint_every_n_minutes = config.get("checkpoint_every_n_minutes", 120)
+    activation_checkpointing = config.get("activation_checkpointing", True)
+    partition_method = config.get("partition_method", "parameters")
+    save_dtype = config.get("save_dtype", "bfloat16")
+    caching_batch_size = config.get("caching_batch_size", 1)
+    steps_per_print = config.get("steps_per_print", 1)
+    video_clip_mode = config.get("video_clip_mode", "single_middle")
+    
+    # Convert lists to JSON strings to fill text fields
+    betas_str = json.dumps(betas)
+    resolutions_str = json.dumps(resolutions)
+    frame_buckets_str = json.dumps(frame_buckets)
+    
+    return {
+        "epochs": training_params,
+        "batch_size": batch_size,
+        "lr": lr,
+        "save_every": save_every,
+        "eval_every": eval_every,
+        "rank": rank,
+        "dtype": dtype,
+        "transformer_path": transformer_path,
+        "vae_path": vae_path,
+        "llm_path": llm_path,
+        "clip_path": clip_path,
+        "optimizer_type": optimizer_type,
+        "betas": betas_str,
+        "weight_decay": weight_decay,
+        "eps": eps,
+        "gradient_accumulation_steps": gradient_accumulation_steps,
+        "num_repeats": num_repeats,
+        "resolutions_input": resolutions_str,
+        "enable_ar_bucket": enable_ar_bucket,
+        "min_ar": min_ar,
+        "max_ar": max_ar,
+        "num_ar_buckets": num_ar_buckets,
+        "frame_buckets": frame_buckets_str,
+        "gradient_clipping": gradient_clipping,
+        "warmup_steps": warmup_steps,
+        "eval_before_first_step": eval_before_first_step,
+        "eval_micro_batch_size_per_gpu": eval_micro_batch_size_per_gpu,
+        "eval_gradient_accumulation_steps": eval_gradient_accumulation_steps,
+        "checkpoint_every_n_minutes": checkpoint_every_n_minutes,
+        "activation_checkpointing": activation_checkpointing,
+        "partition_method": partition_method,
+        "save_dtype": save_dtype,
+        "caching_batch_size": caching_batch_size,
+        "steps_per_print": steps_per_print,
+        "video_clip_mode": video_clip_mode
+    }
+
 def toggle_dataset_option(option):
     if option == "Create New Dataset":
-        # Mostrar container de criação e ocultar container de seleção
+        # Show creation container and hide selection container
         return (
-            gr.update(visible=True),    # Mostrar create_new_container
-            gr.update(visible=False),   # Ocultar select_existing_container
-            gr.update(choices=[], value=None),      # Limpar Dropdown de datasets existentes
-            gr.update(value=""),        # Limpar Dataset Name
-            gr.update(value=""),         # Limpar Upload Status
-            gr.update(value=""),         # Limpar Dataset Path
-            gr.update(visible=True),     # Ocultar Create Dataset Button
-            gr.update(visible=False, value=None),    # Ocultar Upload Files
+            gr.update(visible=True),    # Show create_new_container
+            gr.update(visible=False),   # Hide select_existing_container
+            gr.update(choices=[], value=None),      # Clear Dropdown of existing datasets
+            gr.update(value=""),        # Clear Dataset Name
+            gr.update(value=""),         # Clear Upload Status
+            gr.update(value=""),         # Clear Dataset Path
+            gr.update(visible=True),     # Hide Create Dataset Button
+            gr.update(visible=False, value=None),    # Hide Upload Files
         )
     else:
-        # Ocultar container de criação e mostrar container de seleção
+        # Hide creation container and show selection container
         datasets = get_datasets()
         return (
-            gr.update(visible=False),   # Ocultar create_new_container
-            gr.update(visible=True),    # Mostrar select_existing_container
-            gr.update(choices=datasets if datasets else [], value=None),  # Atualizar Dropdown
-            gr.update(value=""),        # Limpar Dataset Name
-            gr.update(value=""),         # Limpar Upload Status
-            gr.update(value=""),         # Limpar Dataset Path
-            gr.update(visible=False),     # Ocultar Create Dataset Button
-            gr.update(visible=False, value=None),    # Ocultar Upload Files
+            gr.update(visible=False),   # Hide create_new_container
+            gr.update(visible=True),    # Show select_existing_container
+            gr.update(choices=datasets if datasets else [], value=None),  # Update Dropdown
+            gr.update(value=""),        # Clear Dataset Name
+            gr.update(value=""),         # Clear Upload Status
+            gr.update(value=""),         # Clear Dataset Path
+            gr.update(visible=False),     # Hide Create Dataset Button
+            gr.update(visible=False, value=None),    # Hide Upload Files
         )
                 
 def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
@@ -226,10 +351,10 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
                 gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
                 checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
                 video_clip_mode,
-                # num_gpus,  # Adicionado parâmetro num_gpus
-                training_process_state):
+                # num_gpus,  # Added parameter num_gpus
+                ):
     try:
-        # Validar inputs
+        # Validate inputs
         if not dataset_path or not os.path.exists(dataset_path) or dataset_path == BASE_DATASET_DIR:
             return "Error: Please provide a valid dataset path"
         
@@ -257,7 +382,7 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
         except Exception as e:
             return f"Error parsing frame buckets: {str(e)}"
 
-        # Criar configurações
+        # Create configurations
         dataset_config_path = create_dataset_config(
             dataset_path=dataset_path,
             config_dir=config_dir,
@@ -304,7 +429,7 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             video_clip_mode=video_clip_mode
         )
 
-        # Criar args para passar para a função train
+        # Create args to pass to the train function
         # args = argparse.Namespace(
         #     local_rank=-1,
         #     resume_from_checkpoint=False,
@@ -329,44 +454,59 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             
         proc = subprocess.Popen(
             cmd,
-            shell=True,  # Necessário para comandos de shell complexos
+            shell=True,  # Required for complex shell commands
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             #text=True,
             # start_new_session=True, 
-            universal_newlines=False  # Para lidar com bytes
+            preexec_fn=os.setsid,
+            universal_newlines=False  # To handle bytes
         )
+        
+        with process_lock:
+            process_dict[proc.pid] = proc  
         
         thread = threading.Thread(target=read_subprocess_output, args=(proc, log_queue))
         thread.start()
         
-        training_process_state = proc
-
-        return "Training started! Logs will appear below. \n", training_process_state
+        pid = proc.pid
+        
+        return "Training started! Logs will appear below. \n", pid
 
     except Exception as e:
-        training_process_state = None
-        return f"Error during training: {str(e)}", training_process_state
+        return f"Error during training: {str(e)}", None
     
-def stop_training(training_process_state):
-    if training_process_state is None:
+def stop_training(pid):
+    if pid is None:
         return "No training process is currently running."
 
-    proc = training_process_state
+    with process_lock:
+        proc = process_dict.get(pid)
+
+    if proc is None:
+        return "No training process is currently running."
+
     if proc.poll() is not None:
         return "Training process has already finished."
 
     try:
-        proc.terminate()  # Tenta encerrar graciosamente
+        # Send SIGTERM signal to the entire process group
+        os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
         try:
-            proc.wait(timeout=5)  # Espera 5 segundos para encerrar
+            proc.wait(timeout=5)  # Wait 5 seconds to terminate
+            with process_lock:
+                del process_dict[pid]
             return "Training process terminated gracefully."
         except subprocess.TimeoutExpired:
-            proc.kill()  # Força a terminação
+            # Force termination if SIGTERM does not work
+            os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
+            proc.wait()
+            with process_lock:
+                del process_dict[pid]
             return "Training process killed forcefully."
     except Exception as e:
         return f"Error stopping training process: {str(e)}"
-    
+
 def upload_dataset(files, current_dataset, action, dataset_name=None):
     """
     Handle uploaded dataset files and store them in a unique directory.
@@ -433,23 +573,189 @@ def upload_dataset(files, current_dataset, action, dataset_name=None):
 
     return current_dataset, f"Uploaded files: {', '.join(uploaded_files)}"
 
+def update_ui_with_config(config_values):
+    """
+    Updates Gradio interface components with configuration values.
+
+    Args:
+        config_values (dict): Dictionary containing dataset and training configurations.
+
+    Returns:
+        tuple: Updated values for the interface components.
+    """
+    # Define default values for each field
+    defaults = {
+        "epochs": 1000,
+        "batch_size": 1,
+        "lr": 2e-5,
+        "save_every": 2,
+        "eval_every": 1,
+        "rank": 32,
+        "dtype": "bfloat16",
+        "transformer_path": "",
+        "vae_path": "",
+        "llm_path": "",
+        "clip_path": "",
+        "optimizer_type": "adamw",
+        "betas": json.dumps([0.9, 0.99]),
+        "weight_decay": 0.01,
+        "eps": 1e-8,
+        "gradient_accumulation_steps": 4,
+        "num_repeats": 10,
+        "resolutions_input": json.dumps([512]),
+        "enable_ar_bucket": True,
+        "min_ar": 0.5,
+        "max_ar": 2.0,
+        "num_ar_buckets": 7,
+        "frame_buckets": json.dumps([1, 33, 65]),
+        "gradient_clipping": 1.0,
+        "warmup_steps": 100,
+        "eval_before_first_step": True,
+        "eval_micro_batch_size_per_gpu": 1,
+        "eval_gradient_accumulation_steps": 1,
+        "checkpoint_every_n_minutes": 120,
+        "activation_checkpointing": True,
+        "partition_method": "parameters",
+        "save_dtype": "bfloat16",
+        "caching_batch_size": 1,
+        "steps_per_print": 1,
+        "video_clip_mode": "single_middle"
+    }
+
+    # Helper function to get values with defaults
+    def get_value(key):
+        return config_values.get(key, defaults.get(key))
+
+    # Extract values with error handling
+    try:
+        epochs = get_value("epochs")
+        batch_size = get_value("batch_size")
+        lr = get_value("lr")
+        save_every = get_value("save_every")
+        eval_every = get_value("eval_every")
+        rank = get_value("rank")
+        dtype = get_value("dtype")
+        transformer_path = get_value("transformer_path")
+        vae_path = get_value("vae_path")
+        llm_path = get_value("llm_path")
+        clip_path = get_value("clip_path")
+        optimizer_type = get_value("optimizer_type")
+        betas = get_value("betas")
+        weight_decay = get_value("weight_decay")
+        eps = get_value("eps")
+        gradient_accumulation_steps = get_value("gradient_accumulation_steps")
+        num_repeats = get_value("num_repeats")
+        resolutions_input = get_value("resolutions_input")
+        enable_ar_bucket = get_value("enable_ar_bucket")
+        min_ar = get_value("min_ar")
+        max_ar = get_value("max_ar")
+        num_ar_buckets = get_value("num_ar_buckets")
+        frame_buckets = get_value("frame_buckets")
+        gradient_clipping = get_value("gradient_clipping")
+        warmup_steps = get_value("warmup_steps")
+        eval_before_first_step = get_value("eval_before_first_step")
+        eval_micro_batch_size_per_gpu = get_value("eval_micro_batch_size_per_gpu")
+        eval_gradient_accumulation_steps = get_value("eval_gradient_accumulation_steps")
+        checkpoint_every_n_minutes = get_value("checkpoint_every_n_minutes")
+        activation_checkpointing = get_value("activation_checkpointing")
+        partition_method = get_value("partition_method")
+        save_dtype = get_value("save_dtype")
+        caching_batch_size = get_value("caching_batch_size")
+        steps_per_print = get_value("steps_per_print")
+        video_clip_mode = get_value("video_clip_mode")
+    except Exception as e:
+        print(f"Error extracting configurations: {str(e)}")
+        # Return default values in case of an error
+        epochs = defaults["epochs"]
+        batch_size = defaults["batch_size"]
+        lr = defaults["lr"]
+        save_every = defaults["save_every"]
+        eval_every = defaults["eval_every"]
+        rank = defaults["rank"]
+        dtype = defaults["dtype"]
+        transformer_path = defaults["transformer_path"]
+        vae_path = defaults["vae_path"]
+        llm_path = defaults["llm_path"]
+        clip_path = defaults["clip_path"]
+        optimizer_type = defaults["optimizer_type"]
+        betas = defaults["betas"]
+        weight_decay = defaults["weight_decay"]
+        eps = defaults["eps"]
+        gradient_accumulation_steps = defaults["gradient_accumulation_steps"]
+        num_repeats = defaults["num_repeats"]
+        resolutions_input = defaults["resolutions_input"]
+        enable_ar_bucket = defaults["enable_ar_bucket"]
+        min_ar = defaults["min_ar"]
+        max_ar = defaults["max_ar"]
+        num_ar_buckets = defaults["num_ar_buckets"]
+        frame_buckets = defaults["frame_buckets"]
+        gradient_clipping = defaults["gradient_clipping"]
+        warmup_steps = defaults["warmup_steps"]
+        eval_before_first_step = defaults["eval_before_first_step"]
+        eval_micro_batch_size_per_gpu = defaults["eval_micro_batch_size_per_gpu"]
+        eval_gradient_accumulation_steps = defaults["eval_gradient_accumulation_steps"]
+        checkpoint_every_n_minutes = defaults["checkpoint_every_n_minutes"]
+        activation_checkpointing = defaults["activation_checkpointing"]
+        partition_method = defaults["partition_method"]
+        save_dtype = defaults["save_dtype"]
+        caching_batch_size = defaults["caching_batch_size"]
+        steps_per_print = defaults["steps_per_print"]
+        video_clip_mode = defaults["video_clip_mode"]
+    print(num_repeats)
+    return (
+        epochs,
+        batch_size,
+        lr,
+        save_every,
+        eval_every,
+        rank,
+        dtype,
+        transformer_path,
+        vae_path,
+        llm_path,
+        clip_path,
+        optimizer_type,
+        betas,
+        weight_decay,
+        eps,
+        gradient_accumulation_steps,
+        num_repeats,
+        resolutions_input,
+        enable_ar_bucket,
+        min_ar,
+        max_ar,
+        num_ar_buckets,
+        frame_buckets,
+        gradient_clipping,
+        warmup_steps,
+        eval_before_first_step,
+        eval_micro_batch_size_per_gpu,
+        eval_gradient_accumulation_steps,
+        checkpoint_every_n_minutes,
+        activation_checkpointing,
+        partition_method,
+        save_dtype,
+        caching_batch_size,
+        steps_per_print,
+        video_clip_mode
+    )
 
 def show_media(dataset_dir):
     """Display uploaded images and .mp4 videos in a single gallery."""
     if not dataset_dir or not os.path.exists(dataset_dir):
-        # Retorna uma lista vazia se o dataset_dir for inválido
+        # Return an empty list if the dataset_dir is invalid
         return []
 
-    # Lista de arquivos de imagem e vídeos .mp4
+    # List of image and .mp4 video files
     media_files = [
         f for f in os.listdir(dataset_dir)
         if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp', '.webp', '.mp4'))
     ]
 
-    # Obtenha os caminhos absolutos dos arquivos
+    # Get absolute paths of the files
     media_paths = [os.path.abspath(os.path.join(dataset_dir, f)) for f in media_files[:MAX_MEDIA]]
 
-    # Verifique se os arquivos existem
+    # Check if the files exist
     existing_media = [f for f in media_paths if os.path.exists(f)]
 
     return existing_media
@@ -475,7 +781,7 @@ theme = gr.themes.Monochrome(
     ]
 )
 
-# Interface Gradio
+# Gradio Interface
 with gr.Blocks(theme=theme) as demo:
     gr.Markdown("# LoRA Training Interface for Hunyuan Video")
     
@@ -493,27 +799,26 @@ with gr.Blocks(theme=theme) as demo:
             return (
                 gr.update(value="Please provide a dataset name."), 
                 gr.update(value=None), 
-                gr.update(visible=True),   # Manter botão visível
+                gr.update(visible=True),   # Keep button visible
                 gr.update(visible=False),
-                gr.update(value="")        # Limpar dataset_path_display
+                gr.update(value="")        # Clear dataset_path_display
             )
         dataset_path, message = upload_dataset([], None, "start", dataset_name=dataset_name)
         if "already exists" in message:
             return (
                 gr.update(value=message), 
                 gr.update(value=None), 
-                gr.update(visible=True),   # Manter botão visível
+                gr.update(visible=True),   # Keep button visible
                 gr.update(visible=False),
-                gr.update(value="")        # Limpar dataset_path_display
+                gr.update(value="")        # Clear dataset_path_display
             )
         return (
             gr.update(value=message), 
             dataset_path, 
             gr.update(visible=False), 
             gr.update(visible=True),
-            gr.update(value=dataset_path)  # Atualizar dataset_path_display
+            gr.update(value=dataset_path)  # Update dataset_path_display
         )
-    
     
 
     with gr.Row(visible=True, elem_id="create_new_dataset_container") as create_new_container:
@@ -524,7 +829,7 @@ with gr.Blocks(theme=theme) as demo:
                         placeholder="Enter your dataset name",
                         interactive=True
                     )
-                create_dataset_button = gr.Button("Create Dataset", interactive=False)  # Inicialmente desativado
+                create_dataset_button = gr.Button("Create Dataset", interactive=False)  # Initially disabled
                 upload_status = gr.Textbox(label="Upload Status", interactive=False)
                 upload_files = gr.File(
                     label="Upload Images (.jpg, .png, .gif, .bmp, .webp), Videos (.mp4), Captions (.txt) or a ZIP archive",
@@ -535,7 +840,7 @@ with gr.Blocks(theme=theme) as demo:
                     visible=False
                 )
                 
-    # Função para habilitar/desabilitar o botão "Start New Dataset" com base na entrada
+    # Function to enable/disable the "Start New Dataset" button based on input
     def toggle_start_button(name):
         if name.strip():
             return gr.update(interactive=True)
@@ -543,7 +848,7 @@ with gr.Blocks(theme=theme) as demo:
             return gr.update(interactive=False)
     
     current_dataset_state = gr.State(None)
-    training_process_state = gr.State(None)
+    training_process_pid = gr.State(None)
     
     dataset_name_input.change(
         fn=toggle_start_button, 
@@ -556,15 +861,15 @@ with gr.Blocks(theme=theme) as demo:
         return updated_dataset, message, show_media(updated_dataset)
     
     
-    # Container para selecionar dataset existente
+    # Container to select existing dataset
     with gr.Row(visible=False, elem_id="select_existing_dataset_container") as select_existing_container:
         with gr.Column():
             existing_datasets = gr.Dropdown(
-                choices=[],  # Inicialmente vazio; será atualizado dinamicamente
+                choices=[],  # Initially empty; will be updated dynamically
                 label="Select Existing Dataset",
                 interactive=True
             )
-            # select_dataset_button = gr.Button("Select Dataset", interactive=False)  # Inicialmente desativado
+            # select_dataset_button = gr.Button("Select Dataset", interactive=False)  # Initially disabled
     
     # 2. Media Gallery
     gr.Markdown("### Dataset Preview")
@@ -579,7 +884,7 @@ with gr.Blocks(theme=theme) as demo:
         visible=True
     )
     
-    # Upload de arquivos and update gallery
+    # Upload files and update gallery
     upload_files.upload(
         fn=lambda files, current_dataset: handle_upload(files, current_dataset),
         inputs=[upload_files, current_dataset_state],
@@ -587,12 +892,34 @@ with gr.Blocks(theme=theme) as demo:
         queue=True
     )
     
-    # Função para lidar com a seleção de dataset existente e atualizar a galeria
+    # Function to handle selecting an existing dataset and updating the gallery
     def handle_select_existing(selected_dataset):
         if selected_dataset:
             dataset_path = os.path.join(BASE_DATASET_DIR, selected_dataset)
-            return dataset_path
-        return ""
+            config, error = load_training_config(selected_dataset)
+            if error:
+                return (
+                    "",  # Clear dataset path
+                    "",  # Clear config and output paths
+                    "",  # Clear parameter values
+                    f"Error loading configuration: {error}",
+                    []    # Clear gallery
+                )
+            config_values = extract_config_values(config)
+            
+            # Update config and output paths
+            config_path = os.path.join(CONFIG_DIR, selected_dataset)
+            output_path = os.path.join(OUTPUT_DIR, selected_dataset)
+            
+            return (
+                dataset_path,  # Update dataset_path
+                config_path,   # Update config_dir
+                output_path,   # Update output_dir
+                "",            # Clear error messages
+                show_media(dataset_path),  # Update gallery with dataset files
+                config_values  # Pass configuration values to be updated in the UI
+            )
+        return "", "", "", "No dataset selected.", [], {}
     
     with gr.Row():
         with gr.Column():
@@ -615,12 +942,7 @@ with gr.Blocks(theme=theme) as demo:
         outputs=[upload_status, current_dataset_state, create_dataset_button, upload_files, dataset_path]
     )
      
-    # Evento para atualizar o caminho do dataset e a galeria ao selecionar um existente
-    existing_datasets.change(
-        fn=handle_select_existing,
-        inputs=existing_datasets,
-        outputs=[dataset_path]  # Atualizar dataset_path_display e gallery
-    )
+   
    
     dataset_option.change(
         fn=toggle_dataset_option,
@@ -628,14 +950,14 @@ with gr.Blocks(theme=theme) as demo:
         outputs=[create_new_container, select_existing_container, existing_datasets, dataset_name_input, upload_status, dataset_path, create_dataset_button, upload_files]
     )
     
-    # Atualizar config path and output path
+    # Update config path and output path
     def update_config_output_path(dataset_path):
         config_path = os.path.join(CONFIG_DIR, os.path.basename(dataset_path))
         output_path = os.path.join(OUTPUT_DIR, os.path.basename(dataset_path))
         return config_path, output_path
     
      
-    # Atualizar galeria quando o caminho do dataset muda
+    # Update gallery when dataset path changes
     dataset_path.change(
         fn=lambda path: show_media(path),
         inputs=dataset_path,
@@ -863,8 +1185,8 @@ with gr.Blocks(theme=theme) as demo:
     
         with gr.Row():
             with gr.Column(scale=1):
-                train_button = gr.Button("Start Training")
-                stop_button = gr.Button("Stop Training")
+                train_button = gr.Button("Start Training", visible=True)
+                stop_button = gr.Button("Stop Training", visible=False)
                 with gr.Row():
                     with gr.Column(scale=1):
                         output = gr.Textbox(
@@ -874,6 +1196,34 @@ with gr.Blocks(theme=theme) as demo:
                             elem_id="log_box"
                         )
     
+    hidden_config = gr.JSON(label="Hidden Configuration", visible=False)
+     
+    # Event to update dataset path and gallery when selecting an existing one
+    existing_datasets.change(
+        fn=handle_select_existing,
+        inputs=existing_datasets,
+        outputs=[
+            dataset_path, 
+            config_dir, 
+            output_dir, 
+            upload_status, 
+            gallery,
+            hidden_config  # Add a state to store configuration values
+        ]
+    ).then(
+        fn=lambda config_vals: update_ui_with_config(config_vals),
+        inputs=hidden_config,  # Receives configuration values
+        outputs=[
+            epochs, batch_size, lr, save_every, eval_every, rank, dtype,
+            transformer_path, vae_path, llm_path, clip_path, optimizer_type,
+            betas, weight_decay, eps, gradient_accumulation_steps, num_repeats,
+            resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets,
+            frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
+            eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
+            checkpoint_every_n_minutes, activation_checkpointing, partition_method,
+            save_dtype, caching_batch_size, steps_per_print, video_clip_mode
+        ]
+    )
     
     def handle_train_click(
         dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
@@ -882,10 +1232,14 @@ with gr.Blocks(theme=theme) as demo:
         gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
         checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
         video_clip_mode,
-        # num_gpus,  # Adicionado parâmetro num_gpus
-        training_process_state   # gr.State para armazenar o subprocesso
+        # num_gpus,  # Added parameter num_gpus
     ):
-        message, training_process_state = train_model(
+        
+        with process_lock:
+            if process_dict:
+                return "A training process is already running. Please stop it before starting a new one.", training_process_pid, gr.update(interactive=False)
+            
+        message, pid = train_model(
             dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
             transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
             gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
@@ -893,22 +1247,28 @@ with gr.Blocks(theme=theme) as demo:
             checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
             video_clip_mode,
             # num_gpus,
-            training_process_state 
         )
-        return message, training_process_state 
+        
+        if pid:
+            # Disable the training button while training is active
+            return message, pid, gr.update(visible=False), gr.update(visible=True)
+        else:
+            return message, pid, gr.update(visible=True), gr.update(visible=False)
 
-    def handle_stop_click(training_process_state):
-        message = stop_training(training_process_state)
-        return message
+    def handle_stop_click(pid):
+        message = stop_training(pid)
+        return message, gr.update(visible=True), gr.update(visible=False)
 
-    def refresh_logs(log_box, training_proc):
-        return update_logs(log_box, training_proc)
+    def refresh_logs(log_box, pid):
+        if pid is not None:
+            return update_logs(log_box, pid)
+        return log_box
     
     log_timer = gr.Timer(0.5, active=False) 
     
     log_timer.tick(
         fn=refresh_logs,
-        inputs=[output, training_process_state],
+        inputs=[output, training_process_pid],
         outputs=output
     )
     
@@ -924,14 +1284,13 @@ with gr.Blocks(theme=theme) as demo:
             num_ar_buckets, frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
             eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
             activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-            video_clip_mode,
+            video_clip_mode
             # gr.Number(label="Number of GPUs", value=1, info="Number of GPUs to use"),
-            training_process_state  # Passar o estado atual
         ],
-        outputs=[output, training_process_state],
+        outputs=[output, training_process_pid, train_button, stop_button],
         api_name=None
     ).then(
-        fn=lambda: gr.update(active=True),  # Ativar o Timer
+        fn=lambda: gr.update(active=True),  # Activate the Timer
         inputs=None,
         outputs=log_timer
     )
@@ -941,19 +1300,15 @@ with gr.Blocks(theme=theme) as demo:
     
     stop_click = stop_button.click(
         fn=handle_stop_click,
-        inputs=[training_process_state],
-        outputs=output,
+        inputs=[training_process_pid],
+        outputs=[output,train_button, stop_button],
         api_name=None
     ).then(
-        fn=lambda: gr.update(active=False),  # Desativar o Timer
+        fn=lambda: gr.update(active=False),  # Deactivate the Timer
         inputs=None,
         outputs=log_timer
     )
     
-    def periodic_log_update(log_box, training_process):
-        return update_logs(log_box, training_process)
-    
 
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=["/workspace", "."])
-    
