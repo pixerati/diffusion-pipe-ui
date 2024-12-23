@@ -46,7 +46,7 @@ def process_caption_fn(shuffle_tags=False, caption_prefix=''):
 
 
 def round_to_multiple(x, multiple):
-    return int((x // multiple) * multiple)
+    return int(round(x / multiple) * multiple)
 
 
 def _map_and_cache(dataset, map_fn, cache_dir, cache_file_prefix='', new_fingerprint_args=None, regenerate_cache=False, caching_batch_size=1, with_indices=False):
@@ -217,7 +217,9 @@ class DirectoryDataset:
         self.dataset_config = dataset_config
         self.model_name = model_name
         self.enable_ar_bucket = directory_config.get('enable_ar_bucket', dataset_config.get('enable_ar_bucket', False))
-        self.resolutions = directory_config.get('resolutions', dataset_config['resolutions'])
+        self.resolutions = self._process_user_provided_resolutions(
+            directory_config.get('resolutions', dataset_config['resolutions'])
+        )
         self.path = Path(self.directory_config['path'])
         self.cache_dir = self.path / 'cache' / self.model_name
 
@@ -226,6 +228,8 @@ class DirectoryDataset:
 
         if not self.enable_ar_bucket:
             self.ars = np.array([1.0])
+        elif ars := self.directory_config.get('ar_buckets', self.dataset_config.get('ar_buckets', None)):
+            self.ars = self._process_user_provided_ars(ars)
         else:
             min_ar = self.directory_config.get('min_ar', self.dataset_config['min_ar'])
             max_ar = self.directory_config.get('max_ar', self.dataset_config['max_ar'])
@@ -357,6 +361,28 @@ class DirectoryDataset:
 
             return {'image_file': [str(image_file)], 'caption': [caption], 'ar_bucket': [ar_bucket], 'is_video': [is_video]}
         return fn
+
+    def _process_user_provided_ars(self, ars):
+        ar_buckets = set()
+        for ar in ars:
+            if isinstance(ar, (tuple, list)):
+                assert len(ar) == 2
+                ar = round(ar[0] / ar[1], 6)
+            ar_buckets.add(ar)
+        ar_buckets = list(ar_buckets)
+        ar_buckets.sort()
+        return np.array(ar_buckets)
+
+    def _process_user_provided_resolutions(self, resolutions):
+        result = set()
+        for res in resolutions:
+            if isinstance(res, (tuple, list)):
+                assert len(res) == 2
+                res = round(math.sqrt(res[0] * res[1]), 6)
+            result.add(res)
+        result = list(result)
+        result.sort()
+        return result
 
     def get_size_bucket_datasets(self):
         result = []
@@ -633,26 +659,32 @@ def split_batch(batch, pieces):
 # pipeline parallel training. Iterates indefinitely (deepspeed requirement). Keeps track of epoch.
 # Updates epoch as soon as the final batch is returned (notably different from qlora-pipe).
 class PipelineDataLoader:
-    def __init__(self, dataset, gradient_accumulation_steps, model):
+    def __init__(self, dataset, gradient_accumulation_steps, model, num_dataloader_workers=2):
         self.model = model
         self.dataset = dataset
         self.gradient_accumulation_steps = gradient_accumulation_steps
-        self.skip_first_n_batches = None
+        self.num_dataloader_workers = num_dataloader_workers
         self.iter_called = False
         self.eval_quantile = None
-        self.reset()
+        self.epoch = 1
+        self.num_batches_pulled = 0
+        self.next_micro_batch = None
+        self.recreate_dataloader = False
+        # Be careful to only create the DataLoader some bounded number of times: https://github.com/pytorch/pytorch/issues/91252
+        self._create_dataloader()
+        self.data = self._pull_batches_from_dataloader()
 
     def reset(self):
         self.epoch = 1
         self.num_batches_pulled = 0
         self.next_micro_batch = None
+        self.data = self._pull_batches_from_dataloader()
 
     def set_eval_quantile(self, quantile):
         self.eval_quantile = quantile
 
     def __iter__(self):
         self.iter_called = True
-        self._create_dataloader()
         return self
 
     def __len__(self):
@@ -665,17 +697,18 @@ class PipelineDataLoader:
         try:
             self.next_micro_batch = next(self.data)
         except StopIteration:
-            assert self.skip_first_n_batches is None
-            self._create_dataloader()
+            if self.recreate_dataloader:
+                self._create_dataloader()
+                self.recreate_dataloader = False
+            self.data = self._pull_batches_from_dataloader()
             self.num_batches_pulled = 0
             self.next_micro_batch = next(self.data)
             self.epoch += 1
         return ret
 
-    def _create_dataloader(self):
-        if self.skip_first_n_batches is not None:
-            sampler = SkipFirstNSampler(self.skip_first_n_batches, len(self.dataset))
-            self.skip_first_n_batches = None
+    def _create_dataloader(self, skip_first_n_batches=None):
+        if skip_first_n_batches is not None:
+            sampler = SkipFirstNSampler(skip_first_n_batches, len(self.dataset))
         else:
             sampler = None
         self.dataloader = torch.utils.data.DataLoader(
@@ -683,10 +716,9 @@ class PipelineDataLoader:
             pin_memory=True,
             batch_size=None,
             sampler=sampler,
-            num_workers=2,
-            persistent_workers=True,
+            num_workers=self.num_dataloader_workers,
+            persistent_workers=(self.num_dataloader_workers > 0),
         )
-        self.data = self._pull_batches_from_dataloader()
 
     def _pull_batches_from_dataloader(self):
         for batch in self.dataloader:
@@ -719,7 +751,11 @@ class PipelineDataLoader:
         # -1 because by preloading the next micro_batch, it's always going to have one more batch
         # pulled than the actual number of batches iterated by the caller.
         self.num_batches_pulled = state_dict['num_batches_pulled'] - 1
-        self.skip_first_n_batches = self.num_batches_pulled
+        self._create_dataloader(skip_first_n_batches=self.num_batches_pulled)
+        self.data = self._pull_batches_from_dataloader()
+        # Recreate the dataloader after the first pass so that it won't skip
+        # batches again (we only want it to skip batches the first time).
+        self.recreate_dataloader = True
 
 
 class SkipFirstNSampler(torch.utils.data.Sampler):
