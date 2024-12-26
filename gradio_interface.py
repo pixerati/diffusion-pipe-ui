@@ -4,7 +4,7 @@ import subprocess
 import threading
 import gradio as gr
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import json
 import torch
 import deepspeed
@@ -16,6 +16,8 @@ import argparse
 import toml
 import shutil
 import zipfile
+import tempfile
+import time
 
 DEVELOPMENT = False
 
@@ -329,7 +331,8 @@ def toggle_dataset_option(option):
             gr.update(value=""),         # Clear Upload Status
             gr.update(value=""),         # Clear Dataset Path
             gr.update(visible=True),     # Hide Create Dataset Button
-            gr.update(visible=False, value=None),    # Hide Upload Files
+            gr.update(visible=True),     # Show Upload Files Button 
+            gr.update(visible=False, value=None),    # Hide Download Button
         )
     else:
         # Hide creation container and show selection container
@@ -341,46 +344,46 @@ def toggle_dataset_option(option):
             gr.update(value=""),        # Clear Dataset Name
             gr.update(value=""),         # Clear Upload Status
             gr.update(value=""),         # Clear Dataset Path
-            gr.update(visible=False),     # Hide Create Dataset Button
-            gr.update(visible=False, value=None),    # Hide Upload Files
+            gr.update(visible=False),     # Show Create Dataset Button
+            gr.update(visible=False),     # Hide Upload Files Button
+            gr.update(visible=bool(datasets))    # Show Download Button if datasets exist
         )
-                
+
 def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
                 transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
                 gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
                 gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
                 checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
                 video_clip_mode,
-                # num_gpus,  # Added parameter num_gpus
                 ):
     try:
         # Validate inputs
         if not dataset_path or not os.path.exists(dataset_path) or dataset_path == BASE_DATASET_DIR:
-            return "Error: Please provide a valid dataset path"
+            return "Error: Please provide a valid dataset path", None
         
         os.makedirs(config_dir, exist_ok=True)
 
         if not config_dir or not os.path.exists(config_dir) or config_dir == CONFIG_DIR:
-            return "Error: Please provide a valid config path"
+            return "Error: Please provide a valid config path", None
 
         os.makedirs(output_dir, exist_ok=True)
         
         if not output_dir or not os.path.exists(output_dir) or output_dir == OUTPUT_DIR:
-            return "Error: Please provide a valid output path"
+            return "Error: Please provide a valid output path", None
         
         try:
             resolutions_list = json.loads(resolutions)
             if not isinstance(resolutions_list, list) or not all(isinstance(r, int) for r in resolutions_list):
-                return "Error: Resolutions must be a list of integers. Example: [512] or [512, 768, 1024]"
+                return "Error: Resolutions must be a list of integers. Example: [512] or [512, 768, 1024]", None
         except Exception as e:
-            return f"Error parsing resolutions: {str(e)}"
+            return f"Error parsing resolutions: {str(e)}", None
         
         try:
             frame_buckets_list = json.loads(frame_buckets)
             if not isinstance(frame_buckets_list, list) or not all(isinstance(b, int) for b in frame_buckets_list):
-                return "Error: Frame buckets must be a list of integers. Example: [1, 33, 65]"
+                return "Error: Frame buckets must be a list of integers. Example: [1, 33, 65]", None
         except Exception as e:
-            return f"Error parsing frame buckets: {str(e)}"
+            return f"Error parsing frame buckets: {str(e)}", None
 
         # Create configurations
         dataset_config_path = create_dataset_config(
@@ -429,22 +432,12 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             video_clip_mode=video_clip_mode
         )
 
-        # Create args to pass to the train function
-        # args = argparse.Namespace(
-        #     local_rank=-1,
-        #     resume_from_checkpoint=False,
-        #     regenerate_cache=False,
-        #     cache_only=False
-        # )
-        
         conda_activate_path = "/opt/conda/etc/profile.d/conda.sh"
         conda_env_name = "pyenv"
-        # conda_activate_path = os.path.join(CONDA_DIR, "etc", "profile.d", "conda.sh")
-        # conda_env_name = "pyenv"
         num_gpus = os.getenv("NUM_GPUS", "1")
         
         if not os.path.isfile(conda_activate_path):
-            return "Error: Conda activation script not found"
+            return "Error: Conda activation script not found", None
         
         cmd = (
             f"bash -c 'source {conda_activate_path} && "
@@ -458,8 +451,6 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             shell=True,  # Required for complex shell commands
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            #text=True,
-            # start_new_session=True, 
             preexec_fn=os.setsid,
             universal_newlines=False  # To handle bytes
         )
@@ -472,11 +463,11 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
         
         pid = proc.pid
         
-        return "Training started! Logs will appear below. \n", pid
+        return "Training started! Logs will appear below.\n", pid
 
     except Exception as e:
         return f"Error during training: {str(e)}", None
-    
+
 def stop_training(pid):
     if pid is None:
         return "No training process is currently running."
@@ -515,21 +506,21 @@ def upload_dataset(files, current_dataset, action, dataset_name=None):
     """
     if action == "start":
         if not dataset_name:
-            return current_dataset, "Please provide a dataset name."
+            return current_dataset, "Please provide a dataset name.", []
         # Ensure the dataset name does not contain invalid characters
         dataset_name = "".join(c for c in dataset_name if c.isalnum() or c in (' ', '_', '-')).rstrip()
         dataset_dir = os.path.join(BASE_DATASET_DIR, dataset_name)
         if os.path.exists(dataset_dir):
-            return current_dataset, f"Dataset '{dataset_name}' already exists. Please choose a different name."
+            return current_dataset, f"Dataset '{dataset_name}' already exists. Please choose a different name.", []
         os.makedirs(dataset_dir, exist_ok=True)
-        return dataset_dir, f"Started new dataset: {dataset_dir}"
+        return dataset_dir, f"Started new dataset: {dataset_dir}", show_media(dataset_dir)
 
     if not current_dataset:
-        return current_dataset, "Please start a new dataset before uploading files."
-
+        return current_dataset, "Please start a new dataset before uploading files.", []
+    
     if not files:
-        return current_dataset, "No files uploaded."
-
+        return current_dataset, "No files uploaded.", []
+    
     # Calculate the total size of the current dataset
     total_size = 0
     for root, dirs, files_in_dir in os.walk(current_dataset):
@@ -545,7 +536,7 @@ def upload_dataset(files, current_dataset, action, dataset_name=None):
 
     # Check if adding these files would exceed the limit
     if IS_RUNPOD and (total_size + new_files_size) > MAX_UPLOAD_SIZE_MB * 1024 * 1024:
-        return current_dataset, f"Upload would exceed the {MAX_UPLOAD_SIZE_MB}MB limit on Runpod. Please upload smaller files or finalize the dataset."
+        return current_dataset, f"Upload would exceed the {MAX_UPLOAD_SIZE_MB}MB limit on Runpod. Please upload smaller files or finalize the dataset.", show_media(current_dataset)
 
     uploaded_files = []
 
@@ -572,7 +563,7 @@ def upload_dataset(files, current_dataset, action, dataset_name=None):
                 uploaded_files.append(f"{filename} (unsupported format)")
                 continue
 
-    return current_dataset, f"Uploaded files: {', '.join(uploaded_files)}"
+    return current_dataset, f"Uploaded files: {', '.join(uploaded_files)}", show_media(current_dataset)
 
 def update_ui_with_config(config_values):
     """
@@ -761,6 +752,111 @@ def show_media(dataset_dir):
 
     return existing_media
 
+def create_zip(dataset_name):
+    """
+    Creates a ZIP archive containing the dataset, config, and output directories.
+    
+    Args:
+        dataset_name (str): The name of the dataset.
+    
+    Returns:
+        str: Path to the created ZIP file.
+    """
+    try:
+        # Define paths
+        dataset_dir = os.path.join(BASE_DATASET_DIR, dataset_name)
+        config_dir_path = os.path.join(CONFIG_DIR, dataset_name)
+        output_dir_path = os.path.join(OUTPUT_DIR, dataset_name)
+
+        # Check if all directories exist
+        # if not all([os.path.exists(dataset_dir), os.path.exists(config_dir_path), os.path.exists(output_dir_path)]):
+        #     return None, "One or more directories (dataset, config, output) do not exist."
+
+        # Create a temporary directory to store the ZIP
+        temp_dir = tempfile.mkdtemp()
+        zip_filename = f"{dataset_name}_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
+        zip_path = os.path.join(temp_dir, zip_filename)
+
+        with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            # Add dataset directory
+            for root, dirs, files in os.walk(dataset_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, start=os.path.dirname(dataset_dir))
+                    zipf.write(file_path, arcname)
+
+            # Add config directory
+            for root, dirs, files in os.walk(config_dir_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, start=os.path.dirname(config_dir_path))
+                    zipf.write(file_path, arcname)
+
+            # Add output directory
+            for root, dirs, files in os.walk(output_dir_path):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    arcname = os.path.relpath(file_path, start=os.path.dirname(output_dir_path))
+                    zipf.write(file_path, arcname)
+
+        return zip_path, None
+
+    except Exception as e:
+        return None, f"Error creating ZIP archive: {str(e)}"
+
+def handle_download(dataset_path):
+    """
+    Handles the download button click by creating a ZIP and returning it for download.
+    
+    Args:
+        dataset_path (str): Path to the dataset.
+    
+    Returns:
+        tuple: File object for download and status message.
+    """
+    try:
+        if not dataset_path or dataset_path == BASE_DATASET_DIR or not os.path.exists(dataset_path):
+            return None, "Invalid dataset path."
+
+        dataset_name = os.path.basename(dataset_path)
+        zip_path, error = create_zip(dataset_name)
+
+        if error:
+            return None, error
+
+        # Return the ZIP file for download
+        return zip_path, "Download ready."
+    
+    except Exception as e:
+        return None, f"Error during download: {str(e)}"
+
+def cleanup_temp_files(temp_dir, retention_time=3600):
+    """
+    Periodically cleans up temporary directories older than retention_time seconds.
+    
+    Args:
+        temp_dir (str): Path to the temporary directory.
+        retention_time (int): Time in seconds to retain the files.
+    """
+    while True:
+        try:
+            now = time.time()
+            for folder in os.listdir(temp_dir):
+                folder_path = os.path.join(temp_dir, folder)
+                if os.path.isdir(folder_path):
+                    folder_mtime = os.path.getmtime(folder_path)
+                    if now - folder_mtime > retention_time:
+                        shutil.rmtree(folder_path)
+            time.sleep(1800)  # Check every 30 minutes
+        except Exception as e:
+            print(f"Error during cleanup: {str(e)}")
+            time.sleep(1800)
+
+# Start the cleanup thread
+temp_base_dir = tempfile.mkdtemp()
+cleanup_thread = threading.Thread(target=cleanup_temp_files, args=(temp_base_dir,), daemon=True)
+cleanup_thread.start()
+
 theme = gr.themes.Monochrome(
     primary_hue="gray",
     secondary_hue="gray",
@@ -802,23 +898,26 @@ with gr.Blocks(theme=theme) as demo:
                 gr.update(value=None), 
                 gr.update(visible=True),   # Keep button visible
                 gr.update(visible=False),
-                gr.update(value="")        # Clear dataset_path_display
+                gr.update(value=""),
+                # gr.update(visible=False)  # Hide download button
             )
-        dataset_path, message = upload_dataset([], None, "start", dataset_name=dataset_name)
+        dataset_path, message, media = upload_dataset([], None, "start", dataset_name=dataset_name)
         if "already exists" in message:
             return (
                 gr.update(value=message), 
                 gr.update(value=None), 
                 gr.update(visible=True),   # Keep button visible
                 gr.update(visible=False),
-                gr.update(value="")        # Clear dataset_path_display
+                gr.update(value=""),
+                # gr.update(visible=False)  # Hide download button
             )
         return (
             gr.update(value=message), 
             dataset_path, 
             gr.update(visible=False), 
             gr.update(visible=True),
-            gr.update(value=dataset_path)  # Update dataset_path_display
+            gr.update(value=dataset_path),
+            # gr.update(visible=True)    # Show download button
         )
     
 
@@ -858,9 +957,8 @@ with gr.Blocks(theme=theme) as demo:
     )
     
     def handle_upload(files, current_dataset):
-        updated_dataset, message = upload_dataset(files, current_dataset, "add")
-        return updated_dataset, message, show_media(updated_dataset)
-    
+        updated_dataset, message, media = upload_dataset(files, current_dataset, "add")
+        return updated_dataset, message, media
     
     # Container to select existing dataset
     with gr.Row(visible=False, elem_id="select_existing_dataset_container") as select_existing_container:
@@ -870,7 +968,6 @@ with gr.Blocks(theme=theme) as demo:
                 label="Select Existing Dataset",
                 interactive=True
             )
-            # select_dataset_button = gr.Button("Select Dataset", interactive=False)  # Initially disabled
     
     # 2. Media Gallery
     gr.Markdown("### Dataset Preview")
@@ -884,6 +981,8 @@ with gr.Blocks(theme=theme) as demo:
         height="auto",
         visible=True
     )
+    
+   
     
     # Upload files and update gallery
     upload_files.upload(
@@ -904,7 +1003,9 @@ with gr.Blocks(theme=theme) as demo:
                     "",  # Clear config and output paths
                     "",  # Clear parameter values
                     f"Error loading configuration: {error}",
-                    []    # Clear gallery
+                    [],    # Clear gallery
+                    # gr.update(visible=False),    # Hide download button
+                    gr.update(value="")         # Clear download status
                 )
             config_values = extract_config_values(config)
             
@@ -918,29 +1019,33 @@ with gr.Blocks(theme=theme) as demo:
                 output_path,   # Update output_dir
                 "",            # Clear error messages
                 show_media(dataset_path),  # Update gallery with dataset files
-                config_values  # Pass configuration values to be updated in the UI
+                # gr.update(visible=True),    # Show download button
+                gr.update(value="")         # Clear download status
             )
-        return "", "", "", "No dataset selected.", [], {}
-    
+        return "", "", "", "No dataset selected.", [], gr.update(value="") #, gr.update(visible=False), 
+
     with gr.Row():
         with gr.Column():
             dataset_path = gr.Textbox(
                 label="Dataset Path",
-                value=BASE_DATASET_DIR
+                value=BASE_DATASET_DIR,
+                interactive=False
             )
             config_dir = gr.Textbox(
                 label="Config Path",
-                value=CONFIG_DIR
+                value=CONFIG_DIR,
+                interactive=False
             )
             output_dir = gr.Textbox(
                 label="Output Path",
-                value=OUTPUT_DIR
+                value=OUTPUT_DIR,
+                interactive=False
             )
     
     create_dataset_button.click(
         fn=handle_start_dataset,
         inputs=dataset_name_input,
-        outputs=[upload_status, current_dataset_state, create_dataset_button, upload_files, dataset_path]
+        outputs=[upload_status, current_dataset_state, create_dataset_button, upload_files, dataset_path] #, download_button, download_zip]
     )
      
    
@@ -948,7 +1053,7 @@ with gr.Blocks(theme=theme) as demo:
     dataset_option.change(
         fn=toggle_dataset_option,
         inputs=dataset_option,
-        outputs=[create_new_container, select_existing_container, existing_datasets, dataset_name_input, upload_status, dataset_path, create_dataset_button, upload_files]
+        outputs=[create_new_container, select_existing_container, existing_datasets, dataset_name_input, upload_status, dataset_path, create_dataset_button, upload_files] #, download_button]
     )
     
     # Update config path and output path
@@ -970,7 +1075,10 @@ with gr.Blocks(theme=theme) as demo:
         inputs=dataset_path,
         outputs=[config_dir, output_dir]
     )
-            
+    
+    
+    
+    # Handle Models Configurations
     gr.Markdown("#### Models Configurations")
     with gr.Row():
         with gr.Column():
@@ -1198,8 +1306,17 @@ with gr.Blocks(theme=theme) as demo:
                         )
     
     hidden_config = gr.JSON(label="Hidden Configuration", visible=False)
-     
-    # Event to update dataset path and gallery when selecting an existing one
+    
+     # Adding Download Section
+    gr.Markdown("### Download Files")
+    
+    with gr.Row():
+        download_button = gr.Button("Download ZIP", visible=True)
+        download_zip = gr.File(label="Download ZIP", visible=True)
+        download_status = gr.Textbox(label="Download Status", interactive=False, visible=True)
+        
+        
+    # Handle selecting an existing dataset
     existing_datasets.change(
         fn=handle_select_existing,
         inputs=existing_datasets,
@@ -1209,22 +1326,11 @@ with gr.Blocks(theme=theme) as demo:
             output_dir, 
             upload_status, 
             gallery,
-            hidden_config  # Add a state to store configuration values
-        ]
-    ).then(
-        fn=lambda config_vals: update_ui_with_config(config_vals),
-        inputs=hidden_config,  # Receives configuration values
-        outputs=[
-            epochs, batch_size, lr, save_every, eval_every, rank, dtype,
-            transformer_path, vae_path, llm_path, clip_path, optimizer_type,
-            betas, weight_decay, eps, gradient_accumulation_steps, num_repeats,
-            resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets,
-            frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
-            eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
-            checkpoint_every_n_minutes, activation_checkpointing, partition_method,
-            save_dtype, caching_batch_size, steps_per_print, video_clip_mode
+            # download_button,
+            download_status
         ]
     )
+     
     
     def handle_train_click(
         dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
@@ -1233,7 +1339,6 @@ with gr.Blocks(theme=theme) as demo:
         gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
         checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
         video_clip_mode,
-        # num_gpus,  # Added parameter num_gpus
     ):
         
         with process_lock:
@@ -1247,7 +1352,6 @@ with gr.Blocks(theme=theme) as demo:
             gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
             checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
             video_clip_mode,
-            # num_gpus,
         )
         
         if pid:
@@ -1286,7 +1390,6 @@ with gr.Blocks(theme=theme) as demo:
             eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
             activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
             video_clip_mode
-            # gr.Number(label="Number of GPUs", value=1, info="Number of GPUs to use"),
         ],
         outputs=[output, training_process_pid, train_button, stop_button],
         api_name=None
@@ -1310,6 +1413,23 @@ with gr.Blocks(theme=theme) as demo:
         outputs=log_timer
     )
     
-
+    # Handle Download Button Click
+    download_button.click(
+        fn=handle_download,
+        inputs=[dataset_path],
+        outputs=[download_zip, download_status],
+        queue=True
+    )
+    
+    with gr.Row():
+        download_zip
+    
+    # Ensure that the "Download ZIP" button is only visible when a dataset is selected or created
+    download_button.click(
+        fn=lambda: gr.update(visible=True),
+        inputs=None,
+        outputs=download_zip
+    )
+    
 if __name__ == "__main__":
     demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=["/workspace", "."])
