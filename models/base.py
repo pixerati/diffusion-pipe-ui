@@ -20,9 +20,10 @@ def make_contiguous(*tensors):
 def extract_clips(video, target_frames, video_clip_mode, filepath):
     # video is (channels, num_frames, height, width)
     frames = video.shape[1]
+    print(f'target_frames {target_frames}, frames {frames}, video.shape {video.shape}')
     if frames < target_frames:
         # TODO: think about how to handle this case. Maybe the video should have already been thrown out?
-        print(f'video {filepath} - frames: {frames} and with shape {video.shape} is being skipped because it has less than the target_frames')
+        print(f' video {filepath} - frames: {frames} and with shape {video.shape} is being skipped because it has less than the target_frames')
         return []
 
     if video_clip_mode == 'single_beginning':
@@ -88,6 +89,8 @@ class PreprocessMediaFile:
             pil_img = Image.open(filepath)
             frames = [pil_img]
 
+        print(f'path: {filepath}, round_frames: {self.round_frames}, -- num_frames: {num_frames}, frames_padded: {frames_padded}, width_padded: {width_padded}, height_padded: {height_padded}')
+        
         video = torch.empty((num_frames, 3, height_padded, width_padded))
         for i, frame in enumerate(frames):
             if not isinstance(frame, Image.Image):

@@ -352,7 +352,7 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
                 gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
                 gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
                 checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-                video_clip_mode,
+                video_clip_mode, resume_from_checkpoint
                 ):
     try:
         # Validate inputs
@@ -437,11 +437,13 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
         if not os.path.isfile(conda_activate_path):
             return "Error: Conda activation script not found", None
         
+        resume_checkpoint =  "--resume_from_checkpoint" if resume_from_checkpoint else ""
+        
         cmd = (
             f"bash -c 'source {conda_activate_path} && "
             f"conda activate {conda_env_name} && "
             f"NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 deepspeed --num_gpus={num_gpus} "
-            f"train.py --deepspeed --config {training_config_path} --resume_from_checkpoint'"          
+            f"train.py --deepspeed --config {training_config_path} {resume_checkpoint}'"          
         )
         
         # --regenerate_cache
@@ -1310,6 +1312,7 @@ with gr.Blocks(theme=theme) as demo:
     
         with gr.Row():
             with gr.Column(scale=1):
+                resume_from_checkpoint = gr.Checkbox(label="Resume from last checkpoint", info="If this is your first training, do not check this box, because the outputs folder will be empty and will cause an error."),
                 train_button = gr.Button("Start Training", visible=True)
                 stop_button = gr.Button("Stop Training", visible=False)
                 with gr.Row():
@@ -1374,7 +1377,7 @@ with gr.Blocks(theme=theme) as demo:
         gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
         gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
         checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-        video_clip_mode,
+        video_clip_mode, resume_from_checkpoint
     ):
         
         with process_lock:
@@ -1387,7 +1390,7 @@ with gr.Blocks(theme=theme) as demo:
             gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
             gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
             checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-            video_clip_mode,
+            video_clip_mode, resume_from_checkpoint
         )
         
         if pid:
@@ -1425,7 +1428,7 @@ with gr.Blocks(theme=theme) as demo:
             num_ar_buckets, frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
             eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
             activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-            video_clip_mode
+            video_clip_mode, resume_from_checkpoint[0]
         ],
         outputs=[output, training_process_pid, train_button, stop_button],
         api_name=None
