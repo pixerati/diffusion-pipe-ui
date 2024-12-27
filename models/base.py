@@ -17,12 +17,12 @@ def make_contiguous(*tensors):
     return tuple(x.contiguous() for x in tensors)
 
 
-def extract_clips(video, target_frames, video_clip_mode):
+def extract_clips(video, target_frames, video_clip_mode, filepath):
     # video is (channels, num_frames, height, width)
     frames = video.shape[1]
     if frames < target_frames:
         # TODO: think about how to handle this case. Maybe the video should have already been thrown out?
-        print(f'video with shape {video.shape} is being skipped because it has less than the target_frames')
+        print(f'video {filepath} - frames: {frames} and with shape {video.shape} is being skipped because it has less than the target_frames')
         return []
 
     if video_clip_mode == 'single_beginning':
@@ -103,7 +103,7 @@ class PreprocessMediaFile:
         if not is_video:
             return [video]
         else:
-            return extract_clips(video, frames_padded, self.video_clip_mode)
+            return extract_clips(video, frames_padded, self.video_clip_mode, filepath)
 
 
 class BasePipeline:
