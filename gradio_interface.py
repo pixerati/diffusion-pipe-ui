@@ -441,8 +441,10 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             f"bash -c 'source {conda_activate_path} && "
             f"conda activate {conda_env_name} && "
             f"NCCL_P2P_DISABLE=1 NCCL_IB_DISABLE=1 deepspeed --num_gpus={num_gpus} "
-            f"train.py --deepspeed --config {training_config_path}'"          
+            f"train.py --deepspeed --config {training_config_path} --resume_from_checkpoint'"          
         )
+        
+        # --regenerate_cache
             
         proc = subprocess.Popen(
             cmd,
