@@ -332,7 +332,6 @@ def toggle_dataset_option(option):
             gr.update(value=""),         # Clear Dataset Path
             gr.update(visible=True),     # Hide Create Dataset Button
             gr.update(visible=True),     # Show Upload Files Button 
-            gr.update(visible=False, value=None),    # Hide Download Button
         )
     else:
         # Hide creation container and show selection container
@@ -346,7 +345,6 @@ def toggle_dataset_option(option):
             gr.update(value=""),         # Clear Dataset Path
             gr.update(visible=False),     # Show Create Dataset Button
             gr.update(visible=False),     # Hide Upload Files Button
-            gr.update(visible=bool(datasets))    # Show Download Button if datasets exist
         )
 
 def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
@@ -752,7 +750,7 @@ def show_media(dataset_dir):
 
     return existing_media
 
-def create_zip(dataset_name):
+def create_zip(dataset_name, download_dataset, download_config, download_outputs):
     """
     Creates a ZIP archive containing the dataset, config, and output directories.
     
@@ -776,35 +774,43 @@ def create_zip(dataset_name):
         temp_dir = tempfile.mkdtemp()
         zip_filename = f"{dataset_name}_archive_{datetime.now().strftime('%Y%m%d_%H%M%S')}.zip"
         zip_path = os.path.join(temp_dir, zip_filename)
-
+        
         with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
             # Add dataset directory
-            for root, dirs, files in os.walk(dataset_dir):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, start=os.path.dirname(dataset_dir))
-                    zipf.write(file_path, arcname)
+            
+            if download_dataset:
+                for root, dirs, files in os.walk(dataset_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, start=os.path.dirname(dataset_dir))
+                        zipf.write(file_path, arcname)
 
-            # Add config directory
-            for root, dirs, files in os.walk(config_dir_path):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, start=os.path.dirname(config_dir_path))
-                    zipf.write(file_path, arcname)
+            if download_config:
+                # Add config directory
+                for root, dirs, files in os.walk(config_dir_path):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, start=os.path.dirname(config_dir_path))
+                        zipf.write(file_path, arcname)
 
-            # Add output directory
-            for root, dirs, files in os.walk(output_dir_path):
-                for file in files:
-                    file_path = os.path.join(root, file)
-                    arcname = os.path.relpath(file_path, start=os.path.dirname(output_dir_path))
-                    zipf.write(file_path, arcname)
+            if download_outputs:
+                # Add output directory
+                for root, dirs, files in os.walk(output_dir_path):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, start=os.path.dirname(output_dir_path))
+                        zipf.write(file_path, arcname)
+            
+                
+            
+                
 
         return zip_path, None
 
     except Exception as e:
         return None, f"Error creating ZIP archive: {str(e)}"
 
-def handle_download(dataset_path):
+def handle_download(dataset_path, selected_files):
     """
     Handles the download button click by creating a ZIP and returning it for download.
     
@@ -814,12 +820,18 @@ def handle_download(dataset_path):
     Returns:
         tuple: File object for download and status message.
     """
+    
     try:
         if not dataset_path or dataset_path == BASE_DATASET_DIR or not os.path.exists(dataset_path):
             return None, "Invalid dataset path."
 
         dataset_name = os.path.basename(dataset_path)
-        zip_path, error = create_zip(dataset_name)
+        
+        download_dataset = "Dataset" in selected_files
+        download_config = "Configs" in selected_files
+        download_outputs = "Outputs" in selected_files
+        
+        zip_path, error = create_zip(dataset_name,  download_dataset, download_config, download_outputs)
 
         if error:
             return None, error
@@ -1005,7 +1017,8 @@ with gr.Blocks(theme=theme) as demo:
                     f"Error loading configuration: {error}",
                     [],    # Clear gallery
                     # gr.update(visible=False),    # Hide download button
-                    gr.update(value="")         # Clear download status
+                    gr.update(value=""),         # Clear download status
+                    {}
                 )
             config_values = extract_config_values(config)
             
@@ -1020,9 +1033,10 @@ with gr.Blocks(theme=theme) as demo:
                 "",            # Clear error messages
                 show_media(dataset_path),  # Update gallery with dataset files
                 # gr.update(visible=True),    # Show download button
-                gr.update(value="")         # Clear download status
+                gr.update(value=""),        # Clear download status
+                config_values  # Update training parameters
             )
-        return "", "", "", "No dataset selected.", [], gr.update(value="") #, gr.update(visible=False), 
+        return "", "", "", "No dataset selected.", [], gr.update(value=""), {} #, gr.update(visible=False), 
 
     with gr.Row():
         with gr.Column():
@@ -1110,7 +1124,7 @@ with gr.Blocks(theme=theme) as demo:
             epochs = gr.Number(
                 label="Epochs",
                 value=1000,
-                info="Total number of training epochs"
+                info="Total number of training epochs, Total Steps = ((Size of Dataset * Dataset Num Repeats) / (Batch Size * Gradient Accumulation Steps)) * Epochs"
             )
             batch_size = gr.Number(
                 label="Batch Size",
@@ -1200,7 +1214,7 @@ with gr.Blocks(theme=theme) as demo:
             optimizer_type = gr.Textbox(
                 label="Optimizer Type",
                 value="adamw_optimi",
-                info="Type of optimizer"
+                info="Type of optimizer (adamw, adamw8bit, adamw_optimi, stableadamw, sgd, adamw8bitKahan, offload))"
             )
             betas = gr.Textbox(
                 label="Betas",
@@ -1311,7 +1325,13 @@ with gr.Blocks(theme=theme) as demo:
     gr.Markdown("### Download Files")
     
     with gr.Row():
-        download_button = gr.Button("Download ZIP", visible=True)
+        explorer = gr.FileExplorer(root_dir="/workspace", interactive=False, label="File Explorer")
+        
+        
+    with gr.Row():
+        with gr.Column():
+            download_options = gr.CheckboxGroup(["Outputs", "Dataset", "Configs"], label="Download Options"),
+            download_button = gr.Button("Download ZIP", visible=True)
         download_zip = gr.File(label="Download ZIP", visible=True)
         download_status = gr.Textbox(label="Download Status", interactive=False, visible=True)
         
@@ -1327,7 +1347,21 @@ with gr.Blocks(theme=theme) as demo:
             upload_status, 
             gallery,
             # download_button,
-            download_status
+            download_status,
+            hidden_config 
+        ]
+    ).then(
+        fn=lambda config_vals: update_ui_with_config(config_vals),
+        inputs=hidden_config,  # Receives configuration values
+        outputs=[
+            epochs, batch_size, lr, save_every, eval_every, rank, dtype,
+            transformer_path, vae_path, llm_path, clip_path, optimizer_type,
+            betas, weight_decay, eps, gradient_accumulation_steps, num_repeats,
+            resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets,
+            frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
+            eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
+            checkpoint_every_n_minutes, activation_checkpointing, partition_method,
+            save_dtype, caching_batch_size, steps_per_print, video_clip_mode
         ]
     )
      
@@ -1413,10 +1447,11 @@ with gr.Blocks(theme=theme) as demo:
         outputs=log_timer
     )
     
+    
     # Handle Download Button Click
     download_button.click(
         fn=handle_download,
-        inputs=[dataset_path],
+        inputs=[dataset_path, download_options[0]],
         outputs=[download_zip, download_status],
         queue=True
     )
