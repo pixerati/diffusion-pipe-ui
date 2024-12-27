@@ -1,4 +1,4 @@
-# diffusion-pipe
+# diffusion-pipe-ui (fork)
 A pipeline parallel training script for diffusion models.
 
 Currently supports Flux, LTX-Video, and HunyuanVideo.
