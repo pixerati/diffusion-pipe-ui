@@ -16,7 +16,6 @@ Currently supports Flux, LTX-Video, and HunyuanVideo.
 - Training state checkpointing and resuming from checkpoint
 - Efficient multi-process, multi-GPU pre-caching of latents and text embeddings
 - Easily add support for new models by implementing a single subclass
-- Tensorboard to visualize training loss/epoch
 
 
 ## Windows support
@@ -101,6 +100,7 @@ HunyuanVideo doesn't have an official Diffusers integration yet, and as such it 
 - Optional NVIDIA GPU support for accelerated training.
 - Ability to map model and output directories from the host system into the container.
 - Optional automatic download of required models upon first initialization.
+- Tensorboard to visualize training loss/epoch
 
 ### Prerequisites
 
