@@ -16,6 +16,7 @@ Currently supports Flux, LTX-Video, and HunyuanVideo.
 - Training state checkpointing and resuming from checkpoint
 - Efficient multi-process, multi-GPU pre-caching of latents and text embeddings
 - Easily add support for new models by implementing a single subclass
+- Tensorboard to visualize training loss/epoch
 
 
 ## Windows support
