@@ -123,6 +123,7 @@ docker run --gpus all -it -p 7860:7860 -p 8888:8888 alissonpereiraanjos/diffusio
 - `--gpus all`: Enables GPU support if configured.  
 - `-p 7860:7860`: Exposes port 7860 so you can access the Gradio UI at `http://localhost:7860`.
 - `-p 8888:8888`: (optional) Exposes port 8888 so you can access the Jupyter Lab UI at `http://localhost:8888`.
+- `-p 6006:6006`: (optional) Exposes port 6006 so you can access the Tensorboard and visualize your training loss at `http://localhost:6006`.
 
 If you do not have or do not want GPU support, omit `--gpus all`.
 
@@ -138,6 +139,7 @@ docker run --gpus all -it \
   -v /path/to/configs:/workspace/configs \
   -p 8888:8888 \
   -p 7860:7860 \
+  -p 6006:6006 \
   alissonpereiraanjos/diffusion-pipe-interface:latest
 ```
 
@@ -151,6 +153,7 @@ docker run --gpus all -it \
     -v D:\AI\hunyuan\configs:/workspace/configs \
     -p 8888:8888 \
     -p 7860:7860 \
+    -p 6006:6006 \
     alissonpereiraanjos/diffusion-pipe-interface:latest
   ```
 
@@ -166,6 +169,7 @@ docker run --gpus all -it \
   -v /path/to/configs:/workspace/configs \
   -p 8888:8888 \
   -p 7860:7860 \
+  -p 6006:6006 \
   -e DOWNLOAD_MODELS=false \
   alissonpereiraanjos/diffusion-pipe-interface:latest
 ```
@@ -182,6 +186,7 @@ docker run --gpus all -d \
   -v /path/to/configs:/workspace/configs \
   -p 8888:8888 \
   -p 7860:7860 \
+  -p 6006:6006 \
   -e DOWNLOAD_MODELS=false \
   alissonpereiraanjos/diffusion-pipe-interface:latest
 ```
