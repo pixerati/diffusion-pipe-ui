@@ -28,7 +28,7 @@ fi
 service nginx start
 
 # Start JupyterLab
-jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.allow_origin='*' --NotebookApp.token='' --ServerApp.terminado_settings='{"shell_command":["/bin/bash"]}' &
+jupyter lab --ip=0.0.0.0 --port=8888 --no-browser --allow-root --NotebookApp.allow_origin='*' --NotebookApp.token='' --ServerApp.preferred_dir=/workspace --ServerApp.terminado_settings='{"shell_command":["/bin/bash"]}' &
 echo "JupyterLab started"
 
 mkdir -p /workspace

@@ -55,7 +55,8 @@ RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -
 
 # Create environment with Python 3.12 and MPI
 RUN $CONDA_DIR/bin/conda create -n pyenv python=3.12 -y && \
-    $CONDA_DIR/bin/conda install -n pyenv -c conda-forge openmpi mpi4py -y
+    $CONDA_DIR/bin/conda install -n pyenv -c conda-forge openmpi mpi4py -y 
+
 
 # Define PyTorch versions via arguments
 ARG PYTORCH="2.4.1"
@@ -64,6 +65,9 @@ ARG CUDA="124"
 # Install PyTorch with specified version and CUDA
 RUN $CONDA_DIR/bin/conda run -n pyenv \
     pip install torch==$PYTORCH torchvision torchaudio --index-url https://download.pytorch.org/whl/cu$CUDA
+
+RUN $CONDA_DIR/bin/conda install -n pyenv nvidia/label/cuda-12.4.1::cuda-nvcc
+
 
 # Install git lfs
 RUN apt-get update && apt-get install -y git-lfs && git lfs install
@@ -78,6 +82,9 @@ COPY docker/default /etc/nginx/sites-available/default
 RUN pip install jupyterlab ipywidgets jupyter-archive jupyter_contrib_nbextensions nodejs
 
 EXPOSE 8888
+
+# Tensorboard
+EXPOSE 6006 
 
 # Debug
 # RUN $CONDA_DIR/bin/conda run -n pyenv \
