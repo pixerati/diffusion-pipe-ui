@@ -133,6 +133,7 @@ def create_training_config(
     
     # Adapter parameters
     rank: int = 8,
+    only_double_blocks: bool = False,
     
     # Optimizer parameters
     optimizer_type: str = "adamw_optimi",
@@ -179,7 +180,8 @@ def create_training_config(
         "adapter": {
             "type": "lora",
             "rank": rank,
-            "dtype": dtype
+            "dtype": dtype,
+            "only_double_blocks": only_double_blocks
         },
         # Optimizer configuration with evaluated betas
         "optimizer": {
@@ -249,6 +251,7 @@ def extract_config_values(config):
     save_every = config.get("save_every_n_epochs", 2)
     eval_every = config.get("eval_every_n_epochs", 1)
     rank = config.get("adapter", {}).get("rank", 32)
+    only_double_blocks = config.get("adapter", {}).get("only_double_blocks", False)
     dtype = config.get("adapter", {}).get("dtype", "bfloat16")
     transformer_path = config.get("model", {}).get("transformer_path", "/workspace/models/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors")
     vae_path = config.get("model", {}).get("vae_path", "/workspace/models/hunyuan_video_vae_fp32.safetensors")
@@ -293,6 +296,7 @@ def extract_config_values(config):
         "save_every": save_every,
         "eval_every": eval_every,
         "rank": rank,
+        "only_double_blocks": only_double_blocks,
         "dtype": dtype,
         "transformer_path": transformer_path,
         "vae_path": vae_path,
@@ -416,7 +420,7 @@ def toggle_dataset_option(option):
 
 def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
                 transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-                gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint
+                gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks
                 ):
     try:
         # Validate inputs
@@ -475,6 +479,7 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             save_every=save_every,
             eval_every=eval_every,
             rank=rank,
+            only_double_blocks=only_double_blocks,
             dtype=dtype,
             transformer_path=transformer_path,
             vae_path=vae_path,
@@ -654,6 +659,7 @@ def update_ui_with_config(config_values):
         "save_every": 2,
         "eval_every": 1,
         "rank": 32,
+        "only_double_blocks": False,
         "dtype": "bfloat16",
         "transformer_path": "",
         "vae_path": "",
@@ -698,6 +704,7 @@ def update_ui_with_config(config_values):
         save_every = get_value("save_every")
         eval_every = get_value("eval_every")
         rank = get_value("rank")
+        only_double_blocks = get_value("only_double_blocks")
         dtype = get_value("dtype")
         transformer_path = get_value("transformer_path")
         vae_path = get_value("vae_path")
@@ -737,6 +744,7 @@ def update_ui_with_config(config_values):
         save_every = defaults["save_every"]
         eval_every = defaults["eval_every"]
         rank = defaults["rank"]
+        only_double_blocks = defaults["only_double_blocks"]
         dtype = defaults["dtype"]
         transformer_path = defaults["transformer_path"]
         vae_path = defaults["vae_path"]
@@ -775,6 +783,7 @@ def update_ui_with_config(config_values):
         save_every,
         eval_every,
         rank,
+        only_double_blocks,
         dtype,
         transformer_path,
         vae_path,
@@ -1396,7 +1405,10 @@ with gr.Blocks(theme=theme) as demo:
     
         with gr.Row():
             with gr.Column(scale=1):
-                resume_from_checkpoint = gr.Checkbox(label="Resume from last checkpoint", info="If this is your first training, do not check this box, because the outputs folder will be empty and will cause an error."),
+                resume_from_checkpoint = gr.Checkbox(label="Resume from last checkpoint", info="If this is your first training, do not check this box, because the output folder will not have a checkpoint (global_step....) and will cause an error")
+                
+                only_double_blocks = gr.Checkbox(label="Train only double blocks (Experimental)", info="This option will be used to train only two double blocks, some people report that training only double blocks can reduce the amount of motion blurry and improve the final quality of the image.")
+                
                 train_button = gr.Button("Start Training", visible=True)
                 stop_button = gr.Button("Stop Training", visible=False)
                 with gr.Row():
@@ -1407,7 +1419,7 @@ with gr.Blocks(theme=theme) as demo:
                             interactive=False,
                             elem_id="log_box"
                         )
-    
+                        
     hidden_config = gr.JSON(label="Hidden Configuration", visible=False)
     
      # Adding Download Section
@@ -1424,41 +1436,11 @@ with gr.Blocks(theme=theme) as demo:
         download_zip = gr.File(label="Download ZIP", visible=True)
         download_status = gr.Textbox(label="Download Status", interactive=False, visible=True)
         
-        
-    # Handle selecting an existing dataset
-    existing_datasets.change(
-        fn=handle_select_existing,
-        inputs=existing_datasets,
-        outputs=[
-            dataset_path, 
-            config_dir, 
-            output_dir, 
-            upload_status, 
-            gallery,
-            # download_button,
-            download_status,
-            hidden_config 
-        ]
-    ).then(
-        fn=lambda config_vals: update_ui_with_config(config_vals),
-        inputs=hidden_config,  # Receives configuration values
-        outputs=[
-            epochs, batch_size, lr, save_every, eval_every, rank, dtype,
-            transformer_path, vae_path, llm_path, clip_path, optimizer_type,
-            betas, weight_decay, eps, gradient_accumulation_steps, num_repeats,
-            resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, ar_buckets,
-            frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
-            eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
-            checkpoint_every_n_minutes, activation_checkpointing, partition_method,
-            save_dtype, caching_batch_size, steps_per_print, video_clip_mode
-        ]
-    )
-     
     
     def handle_train_click(
         dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
         transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-        gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint
+        gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks
     ):
         
         with process_lock:
@@ -1468,7 +1450,7 @@ with gr.Blocks(theme=theme) as demo:
         message, pid = train_model(
             dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
             transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-            gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint
+            gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks
         )
         
         if pid:
@@ -1506,7 +1488,7 @@ with gr.Blocks(theme=theme) as demo:
             num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
             eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
             activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-            video_clip_mode, resume_from_checkpoint[0]
+            video_clip_mode, resume_from_checkpoint, only_double_blocks
         ],
         outputs=[output, training_process_pid, train_button, stop_button],
         api_name=None
@@ -1547,6 +1529,35 @@ with gr.Blocks(theme=theme) as demo:
         fn=lambda: gr.update(visible=True),
         inputs=None,
         outputs=download_zip
+    )
+    
+    # Handle selecting an existing dataset
+    existing_datasets.change(
+        fn=handle_select_existing,
+        inputs=existing_datasets,
+        outputs=[
+            dataset_path, 
+            config_dir, 
+            output_dir, 
+            upload_status, 
+            gallery,
+            # download_button,
+            download_status,
+            hidden_config 
+        ]
+    ).then(
+        fn=lambda config_vals: update_ui_with_config(config_vals),
+        inputs=hidden_config,  # Receives configuration values
+        outputs=[
+            epochs, batch_size, lr, save_every, eval_every, rank, only_double_blocks, dtype,
+            transformer_path, vae_path, llm_path, clip_path, optimizer_type,
+            betas, weight_decay, eps, gradient_accumulation_steps, num_repeats,
+            resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, ar_buckets,
+            frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
+            eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
+            checkpoint_every_n_minutes, activation_checkpointing, partition_method,
+            save_dtype, caching_batch_size, steps_per_print, video_clip_mode
+        ]
     )
     
 if __name__ == "__main__":
