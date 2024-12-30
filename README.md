@@ -1,5 +1,134 @@
-# diffusion-pipe-ui (fork)
-A pipeline parallel training script for diffusion models.
+This repository is a fork of the original repository ([diffusion-pipe](https://github.com/tdrussell/diffusion-pipe)) but its objective is to provide a gradio interface as well as a docker image to facilitate training in any environment that supports docker (windows, linux) without any difficulty. You can also use the interface without using docker and you need to do the normal installation process that is in the original README and then instead of running train.py directly you can run gradio_interface.py.
+
+## Gradio Interface
+
+![preview gradio](/preview-gradio.png)
+
+### Features
+- Docker Image
+- Web UI (Gradio) for configuring and executing LoRA training.
+- Optional NVIDIA GPU support for accelerated training.
+- Ability to map model and output directories from the host system into the container.
+- Optional automatic download of required models upon first initialization.
+- Tensorboard to visualize training loss/epoch
+- Jupyter Lab to manage files
+
+### Prerequisites
+
+- **Docker:**  
+  Install Docker for your platform by following the official documentation:  
+  [Get Docker](https://docs.docker.com/get-docker/)
+
+- **GPU Support (optional):**  
+  To utilize GPU acceleration (NVIDIA):
+  - **Linux:** Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) and ensure your NVIDIA drivers are set up.
+  - **Windows/macOS:** Check respective Docker and NVIDIA documentation for GPU passthrough (e.g., WSL2 on Windows). If GPU support is not available, you can run the container without `--gpus all`.
+
+### 
+
+### How to Run using Docker (Windows, Linux)
+
+#### Basic Run Command
+
+```bash
+docker run --gpus all -it -p 7860:7860 -p 8888:8888 -p 6006:6006 alissonpereiraanjos/diffusion-pipe-interface:latest
+```
+
+- `--gpus all`: Enables GPU support if configured.  
+- `-p 7860:7860`: Exposes port 7860 so you can access the Gradio UI at `http://localhost:7860`.
+- `-p 8888:8888`: (optional) Exposes port 8888 so you can access the Jupyter Lab UI at `http://localhost:8888`.
+- `-p 6006:6006`: (optional) Exposes port 6006 so you can access the Tensorboard and visualize your training loss at `http://localhost:6006`.
+
+If you do not have or do not want GPU support, omit `--gpus all`.
+
+#### Mapping Directories for Models and Output
+
+You can mount host directories to store models and training outputs outside the container:
+
+```bash
+docker run --gpus all -it \
+  -v /path/to/models:/workspace/models \
+  -v /path/to/output:/workspace/output \
+  -v /path/to/datasets:/workspace/datasets \
+  -v /path/to/configs:/workspace/configs \
+  -p 8888:8888 \
+  -p 7860:7860 \
+  -p 6006:6006 \
+  alissonpereiraanjos/diffusion-pipe-interface:latest
+```
+
+- Replace `/path/to/models` and `/path/to/output` with your desired host directories.
+- On Windows, for example:
+  ```bash
+  docker run --gpus all -it \
+    -v D:\AI\hunyuan\models:/workspace/models \
+    -v D:\AI\hunyuan\output:/workspace/output \
+    -v D:\AI\hunyuan\datasets:/workspace/datasets \
+    -v D:\AI\hunyuan\configs:/workspace/configs \
+    -p 8888:8888 \
+    -p 7860:7860 \
+    -p 6006:6006 \
+    alissonpereiraanjos/diffusion-pipe-interface:latest
+  ```
+
+#### Controlling Model Downloads
+
+By default, the container downloads the required models during the first initialization. If you already have the models in `/models` and want to skip automatic downloads, set the `DOWNLOAD_MODELS` environment variable to `false`:
+
+```bash
+docker run --gpus all -it \
+  -v /path/to/models:/workspace/models \
+  -v /path/to/output:/workspace/output \
+  -v /path/to/datasets:/workspace/datasets \
+  -v /path/to/configs:/workspace/configs \
+  -p 8888:8888 \
+  -p 7860:7860 \
+  -p 6006:6006 \
+  -e DOWNLOAD_MODELS=false \
+  alissonpereiraanjos/diffusion-pipe-interface:latest
+```
+
+#### Running in Detached Mode
+
+If you prefer to run the container in the background without an interactive terminal, use `-d`:
+
+```bash
+docker run --gpus all -d \
+  -v /path/to/models:/workspace/models \
+  -v /path/to/output:/workspace/output \
+  -v /path/to/datasets:/workspace/datasets \
+  -v /path/to/configs:/workspace/configs \
+  -p 8888:8888 \
+  -p 7860:7860 \
+  -p 6006:6006 \
+  -e DOWNLOAD_MODELS=false \
+  alissonpereiraanjos/diffusion-pipe-interface:latest
+```
+
+Access the UI (gradio) at `http://localhost:7860`.
+Access the Jupiter lab UI at `http://localhost:8888`.
+
+#### Summary of Options
+
+- `-v /host/path:/container/path`: Mount host directories into the container.
+- `-p host_port:container_port`: Map container ports to host ports.
+- `-e VARIABLE=value`: Set environment variables.
+  - `DOWNLOAD_MODELS=false`: Skips downloading models inside the container.
+- `--gpus all`: Enables GPU support if available.
+- `-it`: Start in interactive mode (useful for debugging).
+- `-d`: Start in detached mode (runs in the background).
+
+Use these options to tailor the setup to your environment and requirements.
+
+### Running on RunPod
+
+If you prefer to use [RunPod](https://runpod.io/), you can quickly deploy an instance based on this image by using the following template link:
+
+[Deploy on RunPod](https://runpod.io/console/deploy?template=t46lnd7p4b&ref=8t518hht)
+
+This link takes you to the RunPod console, allowing you to set up a machine directly with the provided image. Just configure your GPU, volume mounts, and environment variables as needed.
+
+# Original README (diffusion-pipe)
 
 Currently supports Flux, LTX-Video, and HunyuanVideo.
 
@@ -86,135 +215,4 @@ Latents and text embeddings are cached to disk before training happens. This way
 This caching also means that training LoRAs for text encoders is not currently supported.
 
 Two flags are relevant for caching. ```--cache_only``` does the caching flow, then exits without training anything. ```--regenerate_cache``` forces cache regeneration. If you edit the dataset in-place (like changing a caption), you need to force regenerate the cache (or delete the cache dir) for the changes to be picked up.
-
-## HunyuanVideo LoRAs
-HunyuanVideo doesn't have an official Diffusers integration yet, and as such it doesn't have an official LoRA format. This script outputs the LoRA using the typical Diffusers convention, i.e. the state_dict keys are all prefixed with "transformer.". This will work with the latest version of the ComfyUI HunyuanVideoWrapper extension, and is likely to work with Diffusers whenever HunyuanVideo is officially integrated. Make sure the HunyuanVideoWrapper extension is fully updated, and use the "HunyuanVideo Lora Select" node.
-
-## Gradio Interface
-
-![preview gradio](/preview-gradio.png)
-
-### Features
-
-- Web UI (Gradio) for configuring and executing LoRA training.
-- Optional NVIDIA GPU support for accelerated training.
-- Ability to map model and output directories from the host system into the container.
-- Optional automatic download of required models upon first initialization.
-- Tensorboard to visualize training loss/epoch
-
-### Prerequisites
-
-- **Docker:**  
-  Install Docker for your platform by following the official documentation:  
-  [Get Docker](https://docs.docker.com/get-docker/)
-
-- **GPU Support (optional):**  
-  To utilize GPU acceleration (NVIDIA):
-  - **Linux:** Install the [NVIDIA Container Toolkit](https://docs.nvidia.com/datacenter/cloud-native/container-toolkit/install-guide.html) and ensure your NVIDIA drivers are set up.
-  - **Windows/macOS:** Check respective Docker and NVIDIA documentation for GPU passthrough (e.g., WSL2 on Windows). If GPU support is not available, you can run the container without `--gpus all`.
-
-### How to Run
-
-#### Basic Run Command
-
-```bash
-docker run --gpus all -it -p 7860:7860 -p 8888:8888 -p 6006:6006 alissonpereiraanjos/diffusion-pipe-interface:latest
-```
-
-- `--gpus all`: Enables GPU support if configured.  
-- `-p 7860:7860`: Exposes port 7860 so you can access the Gradio UI at `http://localhost:7860`.
-- `-p 8888:8888`: (optional) Exposes port 8888 so you can access the Jupyter Lab UI at `http://localhost:8888`.
-- `-p 6006:6006`: (optional) Exposes port 6006 so you can access the Tensorboard and visualize your training loss at `http://localhost:6006`.
-
-If you do not have or do not want GPU support, omit `--gpus all`.
-
-#### Mapping Directories for Models and Output
-
-You can mount host directories to store models and training outputs outside the container:
-
-```bash
-docker run --gpus all -it \
-   -v /path/to/models:/workspace/models \
-  -v /path/to/output:/workspace/output \
-  -v /path/to/datasets:/workspace/datasets \
-  -v /path/to/configs:/workspace/configs \
-  -p 8888:8888 \
-  -p 7860:7860 \
-  -p 6006:6006 \
-  alissonpereiraanjos/diffusion-pipe-interface:latest
-```
-
-- Replace `/path/to/models` and `/path/to/output` with your desired host directories.
-- On Windows, for example:
-  ```bash
-  docker run --gpus all -it \
-    -v D:\AI\hunyuan\models:/workspace/models \
-    -v D:\AI\hunyuan\output:/workspace/output \
-    -v D:\AI\hunyuan\datasets:/workspace/datasets \
-    -v D:\AI\hunyuan\configs:/workspace/configs \
-    -p 8888:8888 \
-    -p 7860:7860 \
-    -p 6006:6006 \
-    alissonpereiraanjos/diffusion-pipe-interface:latest
-  ```
-
-#### Controlling Model Downloads
-
-By default, the container downloads the required models during the first initialization. If you already have the models in `/models` and want to skip automatic downloads, set the `DOWNLOAD_MODELS` environment variable to `false`:
-
-```bash
-docker run --gpus all -it \
-  -v /path/to/models:/workspace/models \
-  -v /path/to/output:/workspace/output \
-  -v /path/to/datasets:/workspace/datasets \
-  -v /path/to/configs:/workspace/configs \
-  -p 8888:8888 \
-  -p 7860:7860 \
-  -p 6006:6006 \
-  -e DOWNLOAD_MODELS=false \
-  alissonpereiraanjos/diffusion-pipe-interface:latest
-```
-
-#### Running in Detached Mode
-
-If you prefer to run the container in the background without an interactive terminal, use `-d`:
-
-```bash
-docker run --gpus all -d \
-  -v /path/to/models:/workspace/models \
-  -v /path/to/output:/workspace/output \
-  -v /path/to/datasets:/workspace/datasets \
-  -v /path/to/configs:/workspace/configs \
-  -p 8888:8888 \
-  -p 7860:7860 \
-  -p 6006:6006 \
-  -e DOWNLOAD_MODELS=false \
-  alissonpereiraanjos/diffusion-pipe-interface:latest
-```
-
-Access the UI (gradio) at `http://localhost:7860`.
-Access the Jupiter lab UI at `http://localhost:8888`.
-
-#### Summary of Options
-
-- `-v /host/path:/container/path`: Mount host directories into the container.
-- `-p host_port:container_port`: Map container ports to host ports.
-- `-e VARIABLE=value`: Set environment variables.
-  - `DOWNLOAD_MODELS=false`: Skips downloading models inside the container.
-- `--gpus all`: Enables GPU support if available.
-- `-it`: Start in interactive mode (useful for debugging).
-- `-d`: Start in detached mode (runs in the background).
-
-Use these options to tailor the setup to your environment and requirements.
-
-### Running on RunPod
-
-If you prefer to use [RunPod](https://runpod.io/), you can quickly deploy an instance based on this image by using the following template link:
-
-[Deploy on RunPod](https://runpod.io/console/deploy?template=t46lnd7p4b&ref=8t518hht)
-
-This link takes you to the RunPod console, allowing you to set up a machine directly with the provided image. Just configure your GPU, volume mounts, and environment variables as needed.
-
-## Extra
-You can check out my [qlora-pipe](https://github.com/tdrussell/qlora-pipe) project, which is basically the same thing as this but for LLMs.
 
