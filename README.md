@@ -118,7 +118,7 @@ HunyuanVideo doesn't have an official Diffusers integration yet, and as such it 
 #### Basic Run Command
 
 ```bash
-docker run --gpus all -it -p 7860:7860 -p 8888:8888 alissonpereiraanjos/diffusion-pipe-interface:latest
+docker run --gpus all -it -p 7860:7860 -p 8888:8888 -p 6006:6006 alissonpereiraanjos/diffusion-pipe-interface:latest
 ```
 
 - `--gpus all`: Enables GPU support if configured.  
