@@ -1,5 +1,4 @@
-## HunyuanVideo LoRAs
-HunyuanVideo doesn't have an official Diffusers integration yet, and as such it doesn't have an official LoRA format. This script outputs the LoRA using the typical Diffusers convention, i.e. the state_dict keys are all prefixed with "transformer.". This will work with the latest version of the ComfyUI HunyuanVideoWrapper extension, and is likely to work with Diffusers whenever HunyuanVideo is officially integrated. Make sure the HunyuanVideoWrapper extension is fully updated, and use the "HunyuanVideo Lora Select" node.
+This repository is a fork of the original repository ([diffusion-pipe](https://github.com/tdrussell/diffusion-pipe)) but its objective is to provide a gradio interface as well as a docker image to facilitate training in any environment that supports docker (windows, linux) without any difficulty. You can also use the interface without using docker and you need to do the normal installation process that is in the original README and then instead of running train.py directly you can run gradio_interface.py.
 
 ## Gradio Interface
 
@@ -128,14 +127,7 @@ If you prefer to use [RunPod](https://runpod.io/), you can quickly deploy an ins
 
 This link takes you to the RunPod console, allowing you to set up a machine directly with the provided image. Just configure your GPU, volume mounts, and environment variables as needed.
 
-## Extra
-You can check out my [qlora-pipe](https://github.com/tdrussell/qlora-pipe) project, which is basically the same thing as this but for LLMs.
-
-
-# Original README
-
-# diffusion-pipe-ui (fork)
-A pipeline parallel training script for diffusion models.
+# Original README (diffusion-pipe)
 
 Currently supports Flux, LTX-Video, and HunyuanVideo.
 
