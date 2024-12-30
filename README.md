@@ -47,7 +47,7 @@ You can mount host directories to store models and training outputs outside the 
 
 ```bash
 docker run --gpus all -it \
-   -v /path/to/models:/workspace/models \
+  -v /path/to/models:/workspace/models \
   -v /path/to/output:/workspace/output \
   -v /path/to/datasets:/workspace/datasets \
   -v /path/to/configs:/workspace/configs \
