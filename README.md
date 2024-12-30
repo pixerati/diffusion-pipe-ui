@@ -113,7 +113,7 @@ Access the Jupiter lab UI at `http://localhost:8888`.
 - `-v /host/path:/container/path`: Mount host directories into the container.
 - `-p host_port:container_port`: Map container ports to host ports.
 - `-e VARIABLE=value`: Set environment variables.
-  - `DOWNLOAD_MODELS=false`: Skips downloading models inside the container.
+- `-e DOWNLOAD_MODELS=false`: Skips downloading models inside the container.
 - `--gpus all`: Enables GPU support if available.
 - `-it`: Start in interactive mode (useful for debugging).
 - `-d`: Start in detached mode (runs in the background).
