@@ -11,6 +11,7 @@ This repository is a fork of the original repository ([diffusion-pipe](https://g
 - Ability to map model and output directories from the host system into the container.
 - Optional automatic download of required models upon first initialization.
 - Tensorboard to visualize training loss/epoch
+- Jupyter Lab to manage files
 
 ### Prerequisites
 
