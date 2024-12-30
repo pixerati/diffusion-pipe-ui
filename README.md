@@ -39,8 +39,6 @@ docker run --gpus all -it -p 7860:7860 -p 8888:8888 -p 6006:6006 alissonpereiraa
 - `-p 8888:8888`: (optional) Exposes port 8888 so you can access the Jupyter Lab UI at `http://localhost:8888`.
 - `-p 6006:6006`: (optional) Exposes port 6006 so you can access the Tensorboard and visualize your training loss at `http://localhost:6006`.
 
-If you do not have or do not want GPU support, omit `--gpus all`.
-
 #### Mapping Directories for Models and Output
 
 You can mount host directories to store models and training outputs outside the container:
