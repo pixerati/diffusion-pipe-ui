@@ -434,6 +434,9 @@ if __name__ == '__main__':
     model_engine.set_dataloader(train_dataloader)
     steps_per_epoch = len(train_dataloader) // model_engine.gradient_accumulation_steps()
     model_engine.total_steps = steps_per_epoch * config['epochs']
+    
+    print("Total steps: ", model_engine.total_steps)
+    print("Steps per epoch: ", steps_per_epoch)
 
     eval_dataloaders = {
         # Set num_dataloader_workers=0 so dataset iteration is completely deterministic.

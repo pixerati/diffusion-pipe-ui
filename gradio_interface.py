@@ -77,7 +77,8 @@ def create_dataset_config(dataset_path: str,
                         min_ar: float, 
                         max_ar: float, 
                         num_ar_buckets: int, 
-                        frame_buckets: list) -> str:
+                        frame_buckets: list,
+                        ar_buckets: list) -> str:
     """Create and save the dataset configuration in TOML format."""
     dataset_config = {
         "resolutions": resolutions,
@@ -86,6 +87,7 @@ def create_dataset_config(dataset_path: str,
         "max_ar": max_ar,
         "num_ar_buckets": num_ar_buckets,
         "frame_buckets": frame_buckets,
+        "ar_buckets": ar_buckets,	
         "directory": [
             {
                 "path": dataset_path,
@@ -248,21 +250,22 @@ def extract_config_values(config):
     eval_every = config.get("eval_every_n_epochs", 1)
     rank = config.get("adapter", {}).get("rank", 32)
     dtype = config.get("adapter", {}).get("dtype", "bfloat16")
-    transformer_path = config.get("model", {}).get("transformer_path", "")
-    vae_path = config.get("model", {}).get("vae_path", "")
-    llm_path = config.get("model", {}).get("llm_path", "")
-    clip_path = config.get("model", {}).get("clip_path", "")
+    transformer_path = config.get("model", {}).get("transformer_path", "/workspace/models/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors")
+    vae_path = config.get("model", {}).get("vae_path", "/workspace/models/hunyuan_video_vae_fp32.safetensors")
+    llm_path = config.get("model", {}).get("llm_path", "/workspace/models/llava-llama-3-8b-text-encoder-tokenizer")
+    clip_path = config.get("model", {}).get("clip_path", "/workspace/models/clip-vit-large-patch14")
     optimizer_type = config.get("optimizer", {}).get("type", "adamw_optimi")
     betas = config.get("optimizer", {}).get("betas", [0.9, 0.99])
     weight_decay = config.get("optimizer", {}).get("weight_decay", 0.01)
     eps = config.get("optimizer", {}).get("eps", 1e-8)
     gradient_accumulation_steps = config.get("gradient_accumulation_steps", 4)
-    num_repeats = config.get("dataset", {}).get("num_repeats", 10)
+    num_repeats = config.get('dataset', {}).get('directory', [{}])[:1][0].get('num_repeats', 10)
     resolutions = config.get("dataset", {}).get("resolutions", [512])
     enable_ar_bucket = config.get("dataset", {}).get("enable_ar_bucket", True)
     min_ar = config.get("dataset", {}).get("min_ar", 0.5)
     max_ar = config.get("dataset", {}).get("max_ar", 2.0)
     num_ar_buckets = config.get("dataset", {}).get("num_ar_buckets", 7)
+    ar_buckets = config.get("dataset", {}).get("ar_buckets", None)
     frame_buckets = config.get("dataset", {}).get("frame_buckets", [1, 33, 65])
     gradient_clipping = config.get("gradient_clipping", 1.0)
     warmup_steps = config.get("warmup_steps", 100)
@@ -281,6 +284,7 @@ def extract_config_values(config):
     betas_str = json.dumps(betas)
     resolutions_str = json.dumps(resolutions)
     frame_buckets_str = json.dumps(frame_buckets)
+    ar_buckets_str = json.dumps(ar_buckets) if ar_buckets else ""
     
     return {
         "epochs": training_params,
@@ -305,6 +309,7 @@ def extract_config_values(config):
         "min_ar": min_ar,
         "max_ar": max_ar,
         "num_ar_buckets": num_ar_buckets,
+        "ar_buckets": ar_buckets_str,
         "frame_buckets": frame_buckets_str,
         "gradient_clipping": gradient_clipping,
         "warmup_steps": warmup_steps,
@@ -320,6 +325,68 @@ def extract_config_values(config):
         "video_clip_mode": video_clip_mode
     }
 
+def validate_resolutions(resolutions):
+    try:
+        # Attempt to parse the input as JSON
+        resolutions_list = json.loads(resolutions)
+        
+        # Check if the parsed object is a list
+        if not isinstance(resolutions_list, list):
+            return "Error: resolutions must be a list.", None
+        
+        # Case 1: List of numbers (int or float)
+        if all(isinstance(b, (int, float)) for b in resolutions_list):
+            return None, resolutions_list
+        
+        # Case 2: List of lists of numbers
+        elif all(
+            isinstance(sublist, list) and all(isinstance(item, (int, float)) for item in sublist)
+            for sublist in resolutions_list
+        ):
+            return None, resolutions_list
+        
+        else:
+            return (
+                "Error: resolutions must be a list of numbers or a list of lists of numbers. "
+                "Valid examples: [512] or [512, 768, 1024] or [[512, 512], [1280, 720]]"
+            ), None
+    
+    except json.JSONDecodeError as e:
+        return f"Error parsing resolutions: {str(e)}", None
+    except Exception as e:
+        return f"Unexpected error while validating resolutions: {str(e)}", None
+    
+def validate_ar_buckets(ar_buckets):
+    try:
+        # Attempt to parse the input as JSON
+        ar_buckets_list = json.loads(ar_buckets)
+        
+        # Check if the parsed object is a list
+        if not isinstance(ar_buckets_list, list):
+            return "Error: ar_buckets must be a list.", None
+        
+        # Case 1: List of numbers (int or float)
+        if all(isinstance(b, (int, float)) for b in ar_buckets_list):
+            return None, ar_buckets_list
+        
+        # Case 2: List of lists of numbers
+        elif all(
+            isinstance(sublist, list) and all(isinstance(item, (int, float)) for item in sublist)
+            for sublist in ar_buckets_list
+        ):
+            return None, ar_buckets_list
+        
+        else:
+            return (
+                "Error: ar_buckets must be a list of numbers or a list of lists of numbers. "
+                "Valid examples: [1.0, 1.5] or [[512, 512], [448, 576]]"
+            ), None
+    
+    except json.JSONDecodeError as e:
+        return f"Error parsing ar_buckets: {str(e)}", None
+    except Exception as e:
+        return f"Unexpected error while validating ar_buckets: {str(e)}", None
+    
 def toggle_dataset_option(option):
     if option == "Create New Dataset":
         # Show creation container and hide selection container
@@ -349,10 +416,7 @@ def toggle_dataset_option(option):
 
 def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
                 transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-                gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
-                gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
-                checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-                video_clip_mode, resume_from_checkpoint
+                gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint
                 ):
     try:
         # Validate inputs
@@ -369,19 +433,23 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
         if not output_dir or not os.path.exists(output_dir) or output_dir == OUTPUT_DIR:
             return "Error: Please provide a valid output path", None
         
-        try:
-            resolutions_list = json.loads(resolutions)
-            if not isinstance(resolutions_list, list) or not all(isinstance(r, int) for r in resolutions_list):
-                return "Error: Resolutions must be a list of integers. Example: [512] or [512, 768, 1024]", None
-        except Exception as e:
-            return f"Error parsing resolutions: {str(e)}", None
-        
+        resolutions_error, resolutions_list = validate_resolutions(resolutions)
+        if resolutions_error:
+            return resolutions_error, None
+            
         try:
             frame_buckets_list = json.loads(frame_buckets)
             if not isinstance(frame_buckets_list, list) or not all(isinstance(b, int) for b in frame_buckets_list):
                 return "Error: Frame buckets must be a list of integers. Example: [1, 33, 65]", None
         except Exception as e:
             return f"Error parsing frame buckets: {str(e)}", None
+        
+        ar_buckets_list = None
+        
+        if len(ar_buckets) > 0:
+            ar_buckets_error, ar_buckets_list = validate_ar_buckets(ar_buckets)
+            if ar_buckets_error:
+                return ar_buckets_error, None
 
         # Create configurations
         dataset_config_path = create_dataset_config(
@@ -393,7 +461,8 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             min_ar=min_ar,
             max_ar=max_ar,
             num_ar_buckets=num_ar_buckets,
-            frame_buckets=frame_buckets_list
+            frame_buckets=frame_buckets_list,
+            ar_buckets=ar_buckets_list
         )
         
         training_config_path, _ = create_training_config(
@@ -601,6 +670,7 @@ def update_ui_with_config(config_values):
         "min_ar": 0.5,
         "max_ar": 2.0,
         "num_ar_buckets": 7,
+        "ar_buckets": None,
         "frame_buckets": json.dumps([1, 33, 65]),
         "gradient_clipping": 1.0,
         "warmup_steps": 100,
@@ -644,6 +714,7 @@ def update_ui_with_config(config_values):
         min_ar = get_value("min_ar")
         max_ar = get_value("max_ar")
         num_ar_buckets = get_value("num_ar_buckets")
+        ar_buckets = get_value("ar_buckets")
         frame_buckets = get_value("frame_buckets")
         gradient_clipping = get_value("gradient_clipping")
         warmup_steps = get_value("warmup_steps")
@@ -682,6 +753,7 @@ def update_ui_with_config(config_values):
         min_ar = defaults["min_ar"]
         max_ar = defaults["max_ar"]
         num_ar_buckets = defaults["num_ar_buckets"]
+        ar_buckets = defaults["ar_buckets"]
         frame_buckets = defaults["frame_buckets"]
         gradient_clipping = defaults["gradient_clipping"]
         warmup_steps = defaults["warmup_steps"]
@@ -719,6 +791,7 @@ def update_ui_with_config(config_values):
         min_ar,
         max_ar,
         num_ar_buckets,
+        ar_buckets,
         frame_buckets,
         gradient_clipping,
         warmup_steps,
@@ -1174,15 +1247,16 @@ with gr.Blocks(theme=theme) as demo:
             enable_ar_bucket = gr.Checkbox(
                 label="Enable AR Bucket",
                 value=True,
-                info="Enable aspect ratio bucketing"
+                info="Enable aspect ratio bucketing (Min and max aspect ratios, given as width/height ratio.)"
             )
+            
+        with gr.Row():
             min_ar = gr.Number(
                 label="Minimum Aspect Ratio",
                 value=0.5,
                 step=0.1,
                 info="Minimum aspect ratio for AR buckets"
             )
-        with gr.Row():
             max_ar = gr.Number(
                 label="Maximum Aspect Ratio",
                 value=2.0,
@@ -1193,12 +1267,19 @@ with gr.Blocks(theme=theme) as demo:
                 label="Number of AR Buckets",
                 value=7,
                 step=1,
-                info="Number of aspect ratio buckets"
+                info="Number of aspect ratio buckets (Total number of aspect ratio buckets, evenly spaced (in log space) between min_ar and max_ar)"
+            )
+            
+        with gr.Row():
+            ar_buckets = gr.Textbox(
+                label="AR Buckets (optional)",
+                value="",
+                info="Can manually specify AR Buckets instead of using the range-style config above, width/height ratio, or (width, height) pair. Example: [[512, 512], [448, 576]] or [1.0, 1.5]"
             )
             frame_buckets = gr.Textbox(
                 label="Frame Buckets",
                 value="[1, 33, 65]",
-                info="Frame buckets as a JSON list. Example: [1, 33, 65]"
+                info="Videos will be assigned to the first frame bucket that the video is greater than or equal to in length. Example: [1, 33, 65], 1 for images"
             )
         
         with gr.Row():
@@ -1273,7 +1354,8 @@ with gr.Blocks(theme=theme) as demo:
             checkpoint_every_n_minutes = gr.Number(
                 label="Checkpoint Every N Minutes",
                 value=120,
-                info="Frequency to create checkpoints (in minutes)"
+                info="""Frequency to create checkpoints (in minutes), Used to restore training. 
+                Note: Be careful with the time set here as the saved checkpoints take up a lot of disk space."""
             )
         with gr.Row():
             activation_checkpointing = gr.Checkbox(
@@ -1301,12 +1383,14 @@ with gr.Blocks(theme=theme) as demo:
             steps_per_print = gr.Number(
                 label="Steps Per Print",
                 value=1,
-                info="Frequency to print training steps"
+                info="Frequency to print logs to console"
             )
             video_clip_mode = gr.Textbox(
                 label="Video Clip Mode",
                 value="single_middle",
-                info="Mode for video clipping (e.g., single_middle)"
+                info="""single_beginning: one clip starting at the beginning of the video,
+                       single_middle: default, one clip from the middle of the video (cutting off the start and end equally),
+                       multiple_overlapping: extract the minimum number of clips to cover the full range of the video. They might overlap some."""
             )
             
     
@@ -1362,7 +1446,7 @@ with gr.Blocks(theme=theme) as demo:
             epochs, batch_size, lr, save_every, eval_every, rank, dtype,
             transformer_path, vae_path, llm_path, clip_path, optimizer_type,
             betas, weight_decay, eps, gradient_accumulation_steps, num_repeats,
-            resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets,
+            resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, ar_buckets,
             frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
             eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
             checkpoint_every_n_minutes, activation_checkpointing, partition_method,
@@ -1374,10 +1458,7 @@ with gr.Blocks(theme=theme) as demo:
     def handle_train_click(
         dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
         transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-        gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
-        gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
-        checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-        video_clip_mode, resume_from_checkpoint
+        gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint
     ):
         
         with process_lock:
@@ -1387,10 +1468,7 @@ with gr.Blocks(theme=theme) as demo:
         message, pid = train_model(
             dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
             transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-            gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets,
-            gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
-            checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-            video_clip_mode, resume_from_checkpoint
+            gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint
         )
         
         if pid:
@@ -1425,7 +1503,7 @@ with gr.Blocks(theme=theme) as demo:
             dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
             transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
             gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar,
-            num_ar_buckets, frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
+            num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
             eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
             activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
             video_clip_mode, resume_from_checkpoint[0]
