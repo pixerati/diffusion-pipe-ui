@@ -1407,7 +1407,7 @@ with gr.Blocks(theme=theme) as demo:
             with gr.Column(scale=1):
                 resume_from_checkpoint = gr.Checkbox(label="Resume from last checkpoint", info="If this is your first training, do not check this box, because the output folder will not have a checkpoint (global_step....) and will cause an error")
                 
-                only_double_blocks = gr.Checkbox(label="Train only double blocks (Experimental)", info="This option will be used to train only two double blocks, some people report that training only double blocks can reduce the amount of motion blurry and improve the final quality of the image.")
+                only_double_blocks = gr.Checkbox(label="Train only double blocks (Experimental)", info="This option will be used to train only double blocks, some people report that training only double blocks can reduce the amount of motion blur and improve the final quality of the video.")
                 
                 train_button = gr.Button("Start Training", visible=True)
                 stop_button = gr.Button("Stop Training", visible=False)
