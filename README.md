@@ -34,12 +34,12 @@ This repository is a fork of the original repository ([diffusion-pipe](https://g
 docker run --gpus all -it -p 7860:7860 -p 8888:8888 -p 6006:6006 alissonpereiraanjos/diffusion-pipe-interface:latest
 ```
 
+This command will download the models needed to perform the training and make the gradio interface available on port 7860, as well as Jupyter Lab UI on 8888 and Tensorboard on 6006. If you want to map the volumes for some specific reason, such as already having the models on your Windows/Linux, you can look at the section below that explains how to map the volumes and disable the download of the models.
+
 - `--gpus all`: Enables GPU support if configured.  
 - `-p 7860:7860`: Exposes port 7860 so you can access the Gradio UI at `http://localhost:7860`.
 - `-p 8888:8888`: (optional) Exposes port 8888 so you can access the Jupyter Lab UI at `http://localhost:8888`.
 - `-p 6006:6006`: (optional) Exposes port 6006 so you can access the Tensorboard and visualize your training loss at `http://localhost:6006`.
-
-If you do not have or do not want GPU support, omit `--gpus all`.
 
 #### Mapping Directories for Models and Output
 
@@ -57,7 +57,7 @@ docker run --gpus all -it \
   alissonpereiraanjos/diffusion-pipe-interface:latest
 ```
 
-- Replace `/path/to/models` and `/path/to/output` with your desired host directories.
+- Replace `/path/to/models`, `/path/to/output`, `/path/to/datasets` and `/path/to/configs`  with your desired host directories.
 - On Windows, for example:
   ```bash
   docker run --gpus all -it \
@@ -73,7 +73,7 @@ docker run --gpus all -it \
 
 #### Controlling Model Downloads
 
-By default, the container downloads the required models during the first initialization. If you already have the models in `/models` and want to skip automatic downloads, set the `DOWNLOAD_MODELS` environment variable to `false`:
+By default, the container downloads the required models during the first initialization. If you already have the models in `/workspace/models` and want to skip automatic downloads, set the `DOWNLOAD_MODELS` environment variable to `false`:
 
 ```bash
 docker run --gpus all -it \
@@ -113,7 +113,7 @@ Access the Jupiter lab UI at `http://localhost:8888`.
 - `-v /host/path:/container/path`: Mount host directories into the container.
 - `-p host_port:container_port`: Map container ports to host ports.
 - `-e VARIABLE=value`: Set environment variables.
-  - `DOWNLOAD_MODELS=false`: Skips downloading models inside the container.
+- `-e DOWNLOAD_MODELS=false`: Skips downloading models inside the container.
 - `--gpus all`: Enables GPU support if available.
 - `-it`: Start in interactive mode (useful for debugging).
 - `-d`: Start in detached mode (runs in the background).
