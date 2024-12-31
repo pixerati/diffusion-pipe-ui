@@ -136,6 +136,11 @@ If you prefer to use [RunPod](https://runpod.io/), you can quickly deploy an ins
 
 This link takes you to the RunPod console, allowing you to set up a machine directly with the provided image. Just configure your GPU, volume mounts, and environment variables as needed.
 
+Tip: If you train often, I advise you to create a Network Volume in the runpod and use it in your pod, set the Volume to at least 100GB because then you will always have the models and data from your training in it and you will not waste your pod's time downloading the models every time.
+
+![Network Volume Runpod](https://github.com/user-attachments/assets/32f7dc06-b7d1-4974-ac07-dce172c53c64)
+
+
 # Original README (diffusion-pipe)
 
 Currently supports Flux, LTX-Video, and HunyuanVideo.
