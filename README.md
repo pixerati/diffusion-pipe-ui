@@ -140,6 +140,10 @@ Tip: If you train often, I advise you to create a Network Volume in the runpod a
 
 ![Network Volume Runpod](https://github.com/user-attachments/assets/32f7dc06-b7d1-4974-ac07-dce172c53c64)
 
+### Running on Vast.ai
+
+[Template](https://cloud.vast.ai/?ref_id=142589&creator_id=142589&name=Hunyuan%20Lora%20Train%20Simple%20Interface)
+
 
 # Original README (diffusion-pipe)
 
