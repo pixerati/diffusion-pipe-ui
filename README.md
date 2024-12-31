@@ -122,6 +122,12 @@ Access the Jupiter lab UI at `http://localhost:8888`.
 
 Use these options to tailor the setup to your environment and requirements.
 
+#### Update Image Docker
+
+To update the docker image with the new changes, if you already have the image on your machine, you can run the command: 
+
+`docker pull alissonpereiraanjos/diffusion-pipe-interface:latest`
+
 ### Running on RunPod
 
 If you prefer to use [RunPod](https://runpod.io/), you can quickly deploy an instance based on this image by using the following template link:
@@ -129,6 +135,11 @@ If you prefer to use [RunPod](https://runpod.io/), you can quickly deploy an ins
 [Deploy on RunPod](https://runpod.io/console/deploy?template=t46lnd7p4b&ref=8t518hht)
 
 This link takes you to the RunPod console, allowing you to set up a machine directly with the provided image. Just configure your GPU, volume mounts, and environment variables as needed.
+
+Tip: If you train often, I advise you to create a Network Volume in the runpod and use it in your pod, set the Volume to at least 100GB because then you will always have the models and data from your training in it and you will not waste your pod's time downloading the models every time.
+
+![Network Volume Runpod](https://github.com/user-attachments/assets/32f7dc06-b7d1-4974-ac07-dce172c53c64)
+
 
 # Original README (diffusion-pipe)
 
