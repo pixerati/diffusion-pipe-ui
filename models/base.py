@@ -122,7 +122,7 @@ class BasePipeline:
     def configure_adapter(self, adapter_config):
         target_linear_modules = []
         only_double_blocks = adapter_config.get('only_double_blocks', False)
-        for name, module in self.transformer.modules():
+        for name, module in self.transformer.named_modules():
             if module.__class__.__name__ not in self.adapter_target_modules:
                 continue
             
