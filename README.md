@@ -31,8 +31,10 @@ This repository is a fork of the original repository ([diffusion-pipe](https://g
 #### Basic Run Command
 
 ```bash
-docker run --gpus all -it -p 7860:7860 -p 8888:8888 -p 6006:6006 alissonpereiraanjos/diffusion-pipe-interface:latest
+docker run --gpus all -d -p 7860:7860 -p 8888:8888 -p 6006:6006 alissonpereiraanjos/diffusion-pipe-interface:latest
 ```
+
+Note: the -d argument makes it run in detached mode, that is, it will run in the background. Now, if you want to see the log in the terminal where you ran the command, you can use -it instead of -d.
 
 This command will download the models needed to perform the training and make the gradio interface available on port 7860, as well as Jupyter Lab UI on 8888 and Tensorboard on 6006. If you want to map the volumes for some specific reason, such as already having the models on your Windows/Linux, you can look at the section below that explains how to map the volumes and disable the download of the models.
 
