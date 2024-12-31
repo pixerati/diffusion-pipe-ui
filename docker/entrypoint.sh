@@ -33,7 +33,7 @@ if [ ! -f "$INIT_MARKER" ]; then
             git lfs pull
             cd -
         else
-            echo "Skip is true, downloading models..."
+            echo "Skipping the model llava-llama-3-8b-text-encoder-tokenizer download because it already exists."
         fi
 
         # Download hunyuan_video_720_cfgdistill_fp8_e4m3fn model
