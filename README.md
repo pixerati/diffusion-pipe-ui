@@ -16,10 +16,9 @@ This repository is a fork of the original repository ([diffusion-pipe](https://g
 ### Prerequisites
 
 - **Docker:**  
-  Install Docker for your platform by following the official documentation:  
-  [Get Docker](https://docs.docker.com/get-docker/)
-  [How to Install Docker on Windows](https://youtu.be/ZyBBv1JmnWQ)
-  [How to Install Docker on Ubuntu](https://www.youtube.com/watch?v=J4dZ2jcpiP0) 
+  - Install Docker for your platform by following the official documentation: [Get Docker](https://docs.docker.com/get-docker/)
+  - [How to Install Docker on Windows](https://youtu.be/ZyBBv1JmnWQ)
+  - [How to Install Docker on Ubuntu](https://www.youtube.com/watch?v=J4dZ2jcpiP0) 
 
 - **GPU Support (optional):**  
   To utilize GPU acceleration (NVIDIA):
