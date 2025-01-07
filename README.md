@@ -13,11 +13,17 @@ This repository is a fork of the original repository ([diffusion-pipe](https://g
 - Tensorboard to visualize training loss/epoch
 - Jupyter Lab to manage files
 
+### Improvements for the future
+- If the page is updated during training, restore the training data as well as the log
+- Generate samples between epochs to be able to visualize the influence of Lora.
+- Implement Wandb
+
 ### Prerequisites
 
 - **Docker:**  
-  Install Docker for your platform by following the official documentation:  
-  [Get Docker](https://docs.docker.com/get-docker/)
+  - Install Docker for your platform by following the official documentation: [Get Docker](https://docs.docker.com/get-docker/)
+  - [How to Install Docker on Windows](https://youtu.be/ZyBBv1JmnWQ)
+  - [How to Install Docker on Ubuntu](https://www.youtube.com/watch?v=J4dZ2jcpiP0) 
 
 - **GPU Support (optional):**  
   To utilize GPU acceleration (NVIDIA):
@@ -139,6 +145,10 @@ This link takes you to the RunPod console, allowing you to set up a machine dire
 Tip: If you train often, I advise you to create a Network Volume in the runpod and use it in your pod, set the Volume to at least 100GB because then you will always have the models and data from your training in it and you will not waste your pod's time downloading the models every time.
 
 ![Network Volume Runpod](https://github.com/user-attachments/assets/32f7dc06-b7d1-4974-ac07-dce172c53c64)
+
+### Running on Vast.ai
+
+[Template](https://cloud.vast.ai/?ref_id=142589&creator_id=142589&name=Hunyuan%20Lora%20Train%20Simple%20Interface)
 
 
 # Original README (diffusion-pipe)
