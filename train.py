@@ -25,6 +25,7 @@ from utils.common import is_main_process, get_rank, DTYPE_MAP
 import utils.saver
 from utils.isolate_rng import isolate_rng
 from utils.patches import apply_patches
+import wandb
 
 TIMESTEP_QUANTILES_FOR_EVAL = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]
 
@@ -152,13 +153,16 @@ def _evaluate(model_engine, eval_dataloaders, tb_writer, step, eval_gradient_acc
             losses.append(loss)
             if is_main_process():
                 tb_writer.add_scalar(f'{name}/loss_quantile_{quantile:.2f}', loss, step)
+                wandb.log({f'{name}/loss_quantile_{quantile:.2f}': loss, "step": step})
         avg_loss = sum(losses) / len(losses)
         if is_main_process():
             tb_writer.add_scalar(f'{name}/loss', avg_loss, step)
+            wandb.log({f'{name}/loss': avg_loss, "step": step})
 
     duration = time.time() - start
     if is_main_process():
         tb_writer.add_scalar('eval/eval_time_sec', duration, step)
+        wandb.log({'eval/eval_time_sec': duration, "step": step})
         pbar.close()
 
 
@@ -185,6 +189,7 @@ if __name__ == '__main__':
 
     set_config_defaults(config)
     common.AUTOCAST_DTYPE = config['model']['dtype']
+    wandb.init(config=config)
 
     resume_from_checkpoint = (
         args.resume_from_checkpoint if args.resume_from_checkpoint is not None
@@ -468,6 +473,7 @@ if __name__ == '__main__':
 
         if is_main_process() and step % config['logging_steps'] == 0:
             tb_writer.add_scalar(f'train/loss', loss, step)
+            wandb.log({"train/loss": loss, "step": step})
 
         if (config['eval_every_n_steps'] and step % config['eval_every_n_steps'] == 0) or (finished_epoch and config['eval_every_n_epochs'] and epoch % config['eval_every_n_epochs'] == 0):
             evaluate(model_engine, eval_dataloaders, tb_writer, step, config['eval_gradient_accumulation_steps'])
@@ -475,6 +481,7 @@ if __name__ == '__main__':
         if finished_epoch:
             if is_main_process():
                 tb_writer.add_scalar(f'train/epoch_loss', epoch_loss/num_steps, epoch)
+                wandb.log({f'train/epoch_loss': epoch_loss/num_steps, "epoch": epoch})
             epoch_loss = 0
             num_steps = 0
             epoch = new_epoch

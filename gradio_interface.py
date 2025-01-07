@@ -19,13 +19,11 @@ import zipfile
 import tempfile
 import time
 
-DEVELOPMENT = False
-
 # Working directories
-MODEL_DIR = os.path.join(os.getcwd(), "models") if DEVELOPMENT else "/workspace/models"
-BASE_DATASET_DIR = os.path.join(os.getcwd(), "datasets") if DEVELOPMENT else "/workspace/datasets"
-OUTPUT_DIR = os.path.join(os.getcwd(), "outputs") if DEVELOPMENT else "/workspace/outputs"
-CONFIG_DIR = os.path.join(os.getcwd(), "configs") if DEVELOPMENT else "/workspace/configs"
+MODEL_DIR = "/workspace/models"
+BASE_DATASET_DIR = "/workspace/datasets"
+OUTPUT_DIR = "/workspace/outputs"
+CONFIG_DIR = "/workspace/configs"
 
 # Maximum number of media to display in the gallery
 MAX_MEDIA = 50
@@ -1560,5 +1558,23 @@ with gr.Blocks(theme=theme) as demo:
         ]
     )
     
+    
+def parse_args():
+    parser = argparse.ArgumentParser(description="Gradio Interface for LoRA Training on Hunyuan Video")
+
+    parser.add_argument("--local", action="store_true", help="Run the interface locally")
+
+    args = parser.parse_args()
+
+    return args
+
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=["/workspace", "."])
+    args = parse_args()
+    
+    if args.local:
+        MODEL_DIR = os.path.join(os.getcwd(), "models")
+        BASE_DATASET_DIR = os.path.join(os.getcwd(), "datasets")
+        OUTPUT_DIR = os.path.join(os.getcwd(), "outputs")
+        CONFIG_DIR = os.path.join(os.getcwd(), "configs")
+    
+    demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=["/workspace", ".", os.getcwd()])

@@ -59,7 +59,7 @@ RUN $CONDA_DIR/bin/conda create -n pyenv python=3.12 -y && \
 
 
 # Define PyTorch versions via arguments
-ARG PYTORCH="2.4.1"
+ARG PYTORCH="2.5.1"
 ARG CUDA="124"
 
 # Install PyTorch with specified version and CUDA
