@@ -67,17 +67,17 @@ docker run --gpus all -it \
 
 - Replace `/path/to/models`, `/path/to/output`, `/path/to/datasets` and `/path/to/configs`  with your desired host directories.
 - On Windows, for example:
-  ```bash
-  docker run --gpus all -it \
-    -v D:\AI\hunyuan\models:/workspace/models \
-    -v D:\AI\hunyuan\output:/workspace/output \
-    -v D:\AI\hunyuan\datasets:/workspace/datasets \
-    -v D:\AI\hunyuan\configs:/workspace/configs \
-    -p 8888:8888 \
-    -p 7860:7860 \
-    -p 6006:6006 \
-    alissonpereiraanjos/diffusion-pipe-interface:latest
-  ```
+```bash
+docker run --gpus all -it \
+  -v D:\AI\hunyuan\models:/workspace/models \
+  -v D:\AI\hunyuan\output:/workspace/output \
+  -v D:\AI\hunyuan\datasets:/workspace/datasets \
+  -v D:\AI\hunyuan\configs:/workspace/configs \
+  -p 8888:8888 \
+  -p 7860:7860 \
+  -p 6006:6006 \
+  alissonpereiraanjos/diffusion-pipe-interface:latest
+```
 
 #### Controlling Model Downloads
 
