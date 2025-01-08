@@ -15,7 +15,7 @@ from PIL import Image
 import imageio
 import multiprocess as mp
 
-from utils.common import is_main_process, VIDEO_EXTENSIONS, log_duration
+from utils.common import is_main_process, VIDEO_EXTENSIONS, round_to_nearest_multiple
 
 
 DEBUG = False
@@ -43,10 +43,6 @@ def process_caption_fn(shuffle_tags=False, caption_prefix=''):
         example['caption'] = caption
         return example
     return fn
-
-
-def round_to_multiple(x, multiple):
-    return int(round(x / multiple) * multiple)
 
 
 def _map_and_cache(dataset, map_fn, cache_dir, cache_file_prefix='', new_fingerprint_args=None, regenerate_cache=False, caching_batch_size=1, with_indices=False):
@@ -178,8 +174,8 @@ class ARBucketDataset:
             area = res**2
             w = math.sqrt(area * self.ar_frames[0])
             h = area / w
-            w = round_to_multiple(w, IMAGE_SIZE_ROUND_TO_MULTIPLE)
-            h = round_to_multiple(h, IMAGE_SIZE_ROUND_TO_MULTIPLE)
+            w = round_to_nearest_multiple(w, IMAGE_SIZE_ROUND_TO_MULTIPLE)
+            h = round_to_nearest_multiple(h, IMAGE_SIZE_ROUND_TO_MULTIPLE)
             size_bucket = (w, h, self.ar_frames[1])
             metadata_with_size_bucket = self.metadata_dataset.map(lambda example: {'size_bucket': size_bucket}, keep_in_memory=True)
             self.size_buckets.append(
@@ -210,11 +206,12 @@ class ARBucketDataset:
 
 
 class DirectoryDataset:
-    def __init__(self, directory_config, dataset_config, model_name):
+    def __init__(self, directory_config, dataset_config, model_name, framerate=None):
         self._set_defaults(directory_config, dataset_config)
         self.directory_config = directory_config
         self.dataset_config = dataset_config
         self.model_name = model_name
+        self.framerate = framerate
         self.enable_ar_bucket = directory_config.get('enable_ar_bucket', dataset_config.get('enable_ar_bucket', False))
         self.resolutions = self._process_user_provided_resolutions(
             directory_config.get('resolutions', dataset_config['resolutions'])
@@ -321,6 +318,10 @@ class DirectoryDataset:
             empty_return = {'image_file': [], 'caption': [], 'ar_bucket': [], 'is_video': []}
 
             image_file = Path(image_file)
+            if image_file.suffix == '.webp':
+                frames = imageio.get_reader(image_file).get_length()
+                if frames > 1:
+                    raise NotImplementedError('WebP videos are not supported.')
             try:
                 if image_file.suffix in VIDEO_EXTENSIONS:
                     # 100% accurate frame count, but much slower.
@@ -332,13 +333,14 @@ class DirectoryDataset:
                     # it still close enough?
                     meta = imageio.v3.immeta(image_file)
                     height, width = meta['size']
-                    frames = int(meta['fps'] * meta['duration'])
+                    assert self.framerate is not None, "Need model framerate but don't have it. This shouldn't happen. Is the framerate attribute on the model set?"
+                    frames = int(self.framerate * meta['duration'])
                 else:
                     pil_img = Image.open(image_file)
                     width, height = pil_img.size
                     frames = 1
             except Exception:
-                logger.warning(f'Image file {image_file} could not be opened. Skipping.')
+                logger.warning(f'Media file {image_file} could not be opened. Skipping.')
                 return empty_return
             is_video = (frames > 1)
             log_ar = np.log(width / height)
@@ -403,16 +405,17 @@ class DirectoryDataset:
 # for returning the correct batch for the process's data parallel rank. Calls model.prepare_inputs so the
 # returned tuple of tensors is whatever the model needs.
 class Dataset:
-    def __init__(self, dataset_config, model_name):
+    def __init__(self, dataset_config, model):
         super().__init__()
         self.dataset_config = dataset_config
-        self.model_name = model_name
+        self.model = model
+        self.model_name = self.model.name
         self.post_init_called = False
         self.eval_quantile = None
 
         self.directory_datasets = []
         for directory_config in dataset_config['directory']:
-            directory_dataset = DirectoryDataset(directory_config, dataset_config, model_name)
+            directory_dataset = DirectoryDataset(directory_config, dataset_config, self.model_name, framerate=model.framerate)
             self.directory_datasets.append(directory_dataset)
 
     def post_init(self, data_parallel_rank, data_parallel_world_size, per_device_batch_size, gradient_accumulation_steps):

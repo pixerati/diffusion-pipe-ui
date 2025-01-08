@@ -10,7 +10,7 @@ from PIL import Image, ImageOps
 from torchvision import transforms
 import imageio
 
-from utils.common import is_main_process, VIDEO_EXTENSIONS
+from utils.common import is_main_process, VIDEO_EXTENSIONS, round_to_nearest_multiple, round_down_to_multiple
 
 
 def make_contiguous(*tensors):
@@ -73,9 +73,9 @@ class PreprocessMediaFile:
 
     def __call__(self, filepath, size_bucket):
         width, height, frames = size_bucket
-        height_padded = ((height - 1) // self.round_height + 1) * self.round_height
-        width_padded = ((width - 1) // self.round_width + 1) * self.round_width
-        frames_padded = ((frames - 2) // self.round_frames + 1) * self.round_frames + 1
+        height_rounded = round_to_nearest_multiple(height, self.round_height)
+        width_rounded = round_to_nearest_multiple(width, self.round_width)
+        frames_rounded = round_down_to_multiple(frames - 1, self.round_frames) + 1
 
         is_video = (Path(filepath).suffix in VIDEO_EXTENSIONS)
         if is_video:
@@ -89,13 +89,11 @@ class PreprocessMediaFile:
             pil_img = Image.open(filepath)
             frames = [pil_img]
 
-        print(f'path: {filepath}, round_frames: {self.round_frames}, -- num_frames: {num_frames}, frames_padded: {frames_padded}, width_padded: {width_padded}, height_padded: {height_padded}')
-        
-        video = torch.empty((num_frames, 3, height_padded, width_padded))
+        video = torch.empty((num_frames, 3, height_rounded, width_rounded))
         for i, frame in enumerate(frames):
             if not isinstance(frame, Image.Image):
                 frame = torchvision.transforms.functional.to_pil_image(frame)
-            cropped_image = convert_crop_and_resize(frame, (width_padded, height_padded))
+            cropped_image = convert_crop_and_resize(frame, (width_rounded, height_rounded))
             video[i, ...] = self.pil_to_tensor(cropped_image)
 
         if not self.support_video:
@@ -106,10 +104,12 @@ class PreprocessMediaFile:
         if not is_video:
             return [video]
         else:
-            return extract_clips(video, frames_padded, self.video_clip_mode, filepath)
+            return extract_clips(video, frames_rounded, self.video_clip_mode)
 
 
 class BasePipeline:
+    framerate = None
+
     def load_diffusion_model(self):
         pass
 
