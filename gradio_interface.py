@@ -296,6 +296,11 @@ def extract_config_values(config):
     frame_buckets_str = json.dumps(frame_buckets)
     ar_buckets_str = json.dumps(ar_buckets) if ar_buckets else ""
     
+    wandb_enabled = config.get("monitoring", {}).get("enable_wandb", False)
+    wandb_run_name = config.get("monitoring", {}).get("wandb_run_name", None)
+    wandb_tracker_name = config.get("monitoring", {}).get("wandb_tracker_name", None)
+    wandb_api_key = config.get("monitoring", {}).get("wandb_api_key", None)
+    
     return {
         "epochs": training_params,
         "batch_size": batch_size,
@@ -333,7 +338,11 @@ def extract_config_values(config):
         "save_dtype": save_dtype,
         "caching_batch_size": caching_batch_size,
         "steps_per_print": steps_per_print,
-        "video_clip_mode": video_clip_mode
+        "video_clip_mode": video_clip_mode,
+        "enable_wandb": wandb_enabled,
+        "wandb_run_name": wandb_run_name,
+        "wandb_tracker_name": wandb_tracker_name,
+        "wandb_api_key": wandb_api_key
     }
 
 def validate_resolutions(resolutions):
