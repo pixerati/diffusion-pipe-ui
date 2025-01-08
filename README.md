@@ -12,11 +12,11 @@ This repository is a fork of the original repository ([diffusion-pipe](https://g
 - Optional automatic download of required models upon first initialization.
 - Tensorboard to visualize training loss/epoch
 - Jupyter Lab to manage files
+- Wandb
 
 ### Improvements for the future
 - If the page is updated during training, restore the training data as well as the log
 - Generate samples between epochs to be able to visualize the influence of Lora.
-- Implement Wandb
 
 ### Prerequisites
 
