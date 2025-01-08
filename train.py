@@ -189,7 +189,6 @@ if __name__ == '__main__':
 
     set_config_defaults(config)
     common.AUTOCAST_DTYPE = config['model']['dtype']
-    wandb.init(config=config)
 
     resume_from_checkpoint = (
         args.resume_from_checkpoint if args.resume_from_checkpoint is not None
@@ -218,6 +217,17 @@ if __name__ == '__main__':
     else:
         raise NotImplementedError(f'Model type {model_type} is not implemented')
 
+    wandb_enable = config['monitoring']['enable_wandb']
+    
+    if wandb_enable:
+        wandb_run_name = config['monitoring']['wandb_run_name']
+        wandb_tracker_name=config['monitoring']['wandb_tracker_name']
+        wandb_api_key=config['monitoring']['wandb_api_key']
+        logging_dir = config['monitoring']['log_dir']
+        if wandb_api_key is not None and wandb_tracker_name is not None and wandb_run_name is not None:
+            wandb.init(project=wandb_tracker_name, config=config, name=wandb_run_name, dir=logging_dir)
+            wandb.login(key=wandb_api_key)
+            
     # import sys, PIL
     # test_image = sys.argv[1]
     # with torch.no_grad():
