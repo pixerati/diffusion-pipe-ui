@@ -36,10 +36,6 @@ CONDA_DIR = os.getenv("CONDA_DIR", "/opt/conda")  # Directory where Conda is ins
 # Maximum upload size in MB (Gradio expects max_file_size in MB)
 MAX_UPLOAD_SIZE_MB = 500 if IS_RUNPOD else None  # 500MB or no limit
 
-# Create directories if they don't exist
-for dir_path in [MODEL_DIR, BASE_DATASET_DIR, OUTPUT_DIR, CONFIG_DIR]:
-    os.makedirs(dir_path, exist_ok=True)
-
 process_dict = {}
 process_lock = threading.Lock()
 
@@ -1576,5 +1572,9 @@ if __name__ == "__main__":
         BASE_DATASET_DIR = os.path.join(os.getcwd(), "datasets")
         OUTPUT_DIR = os.path.join(os.getcwd(), "outputs")
         CONFIG_DIR = os.path.join(os.getcwd(), "configs")
+        
+    # Create directories if they don't exist
+    for dir_path in [MODEL_DIR, BASE_DATASET_DIR, OUTPUT_DIR, CONFIG_DIR]:
+        os.makedirs(dir_path, exist_ok=True)
     
     demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=["/workspace", ".", os.getcwd()])
