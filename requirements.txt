@@ -21,3 +21,4 @@ accelerate
 loguru
 flash-attn
 gradio
+wandb

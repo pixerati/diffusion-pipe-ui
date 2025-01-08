@@ -19,13 +19,11 @@ import zipfile
 import tempfile
 import time
 
-DEVELOPMENT = False
-
 # Working directories
-MODEL_DIR = os.path.join(os.getcwd(), "models") if DEVELOPMENT else "/workspace/models"
-BASE_DATASET_DIR = os.path.join(os.getcwd(), "datasets") if DEVELOPMENT else "/workspace/datasets"
-OUTPUT_DIR = os.path.join(os.getcwd(), "outputs") if DEVELOPMENT else "/workspace/outputs"
-CONFIG_DIR = os.path.join(os.getcwd(), "configs") if DEVELOPMENT else "/workspace/configs"
+MODEL_DIR = "/workspace/models"
+BASE_DATASET_DIR = "/workspace/datasets"
+OUTPUT_DIR = "/workspace/outputs"
+CONFIG_DIR = "/workspace/configs"
 
 # Maximum number of media to display in the gallery
 MAX_MEDIA = 50
@@ -37,10 +35,6 @@ CONDA_DIR = os.getenv("CONDA_DIR", "/opt/conda")  # Directory where Conda is ins
 
 # Maximum upload size in MB (Gradio expects max_file_size in MB)
 MAX_UPLOAD_SIZE_MB = 500 if IS_RUNPOD else None  # 500MB or no limit
-
-# Create directories if they don't exist
-for dir_path in [MODEL_DIR, BASE_DATASET_DIR, OUTPUT_DIR, CONFIG_DIR]:
-    os.makedirs(dir_path, exist_ok=True)
 
 process_dict = {}
 process_lock = threading.Lock()
@@ -140,7 +134,13 @@ def create_training_config(
     lr: float = 1e-4,
     betas: str = "(0.9, 0.999)",
     weight_decay: float = 0.01,
-    eps: float = 1e-8
+    eps: float = 1e-8,
+    
+    # Monitoring parameters
+    enable_wandb: bool = False,
+    wandb_run_name: str = None,
+    wandb_tracker_name: str = None,
+    wandb_api_key: str = None,
 ):
     """
     Creates a training configuration dictionary from individual parameters.
@@ -190,6 +190,13 @@ def create_training_config(
             "betas": eval(betas),
             "weight_decay": weight_decay,
             "eps": eps
+        },
+        "monitoring": {
+            "log_dir": output_dir,
+            "enable_wandb": enable_wandb,
+            "wandb_run_name": wandb_run_name,
+            "wandb_tracker_name": wandb_tracker_name,
+            "wandb_api_key": wandb_api_key
         }
     }
     
@@ -289,6 +296,11 @@ def extract_config_values(config):
     frame_buckets_str = json.dumps(frame_buckets)
     ar_buckets_str = json.dumps(ar_buckets) if ar_buckets else ""
     
+    wandb_enabled = config.get("monitoring", {}).get("enable_wandb", False)
+    wandb_run_name = config.get("monitoring", {}).get("wandb_run_name", None)
+    wandb_tracker_name = config.get("monitoring", {}).get("wandb_tracker_name", None)
+    wandb_api_key = config.get("monitoring", {}).get("wandb_api_key", None)
+    
     return {
         "epochs": training_params,
         "batch_size": batch_size,
@@ -326,7 +338,11 @@ def extract_config_values(config):
         "save_dtype": save_dtype,
         "caching_batch_size": caching_batch_size,
         "steps_per_print": steps_per_print,
-        "video_clip_mode": video_clip_mode
+        "video_clip_mode": video_clip_mode,
+        "enable_wandb": wandb_enabled,
+        "wandb_run_name": wandb_run_name,
+        "wandb_tracker_name": wandb_tracker_name,
+        "wandb_api_key": wandb_api_key
     }
 
 def validate_resolutions(resolutions):
@@ -420,7 +436,7 @@ def toggle_dataset_option(option):
 
 def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
                 transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-                gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks
+                gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
                 ):
     try:
         # Validate inputs
@@ -454,6 +470,9 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             ar_buckets_error, ar_buckets_list = validate_ar_buckets(ar_buckets)
             if ar_buckets_error:
                 return ar_buckets_error, None
+            
+        if enable_wandb and (wandb_api_key is None or wandb_api_key == ""):
+                return "Error: Wandb is enabled but API KEY is required.", None
 
         # Create configurations
         dataset_config_path = create_dataset_config(
@@ -501,7 +520,11 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             save_dtype=save_dtype,
             caching_batch_size=caching_batch_size,
             steps_per_print=steps_per_print,
-            video_clip_mode=video_clip_mode
+            video_clip_mode=video_clip_mode,
+            enable_wandb=enable_wandb,
+            wandb_run_name=wandb_run_name,
+            wandb_tracker_name=wandb_tracker_name,
+            wandb_api_key=wandb_api_key
         )
 
         conda_activate_path = "/opt/conda/etc/profile.d/conda.sh"
@@ -689,7 +712,11 @@ def update_ui_with_config(config_values):
         "save_dtype": "bfloat16",
         "caching_batch_size": 1,
         "steps_per_print": 1,
-        "video_clip_mode": "single_middle"
+        "video_clip_mode": "single_middle",
+        "enable_wandb": False,
+        "wandb_run_name": None,
+        "wandb_tracker_name": None,
+        "wandb_api_key": None,
     }
 
     # Helper function to get values with defaults
@@ -735,6 +762,10 @@ def update_ui_with_config(config_values):
         caching_batch_size = get_value("caching_batch_size")
         steps_per_print = get_value("steps_per_print")
         video_clip_mode = get_value("video_clip_mode")
+        enable_wandb = get_value("enable_wandb")
+        wandb_run_name = get_value("wandb_run_name")
+        wandb_tracker_name = get_value("wandb_tracker_name")
+        wandb_api_key = get_value("wandb_api_key")
     except Exception as e:
         print(f"Error extracting configurations: {str(e)}")
         # Return default values in case of an error
@@ -775,6 +806,10 @@ def update_ui_with_config(config_values):
         caching_batch_size = defaults["caching_batch_size"]
         steps_per_print = defaults["steps_per_print"]
         video_clip_mode = defaults["video_clip_mode"]
+        enable_wandb = defaults["enable_wandb"]
+        wandb_run_name = defaults["wandb_run_name"]
+        wandb_tracker_name = defaults["wandb_tracker_name"]
+        wandb_api_key = defaults["wandb_api_key"]
     print(num_repeats)
     return (
         epochs,
@@ -813,7 +848,11 @@ def update_ui_with_config(config_values):
         save_dtype,
         caching_batch_size,
         steps_per_print,
-        video_clip_mode
+        video_clip_mode,
+        enable_wandb,
+        wandb_run_name,
+        wandb_tracker_name,
+        wandb_api_key
     )
 
 def show_media(dataset_dir):
@@ -1401,7 +1440,41 @@ with gr.Blocks(theme=theme) as demo:
                        single_middle: default, one clip from the middle of the video (cutting off the start and end equally),
                        multiple_overlapping: extract the minimum number of clips to cover the full range of the video. They might overlap some."""
             )
+        
+        gr.Markdown("#### Monitoring Settings")
+        with gr.Row():
+            enable_wandb = gr.Checkbox(
+                label="Enable Wandb",
+                value=False,
+                info="Enable Wandb monitoring"
+            )
             
+            wandb_run_name = gr.Textbox(
+                label="Wandb Run Name",
+                info="Name of the wandb run",
+                visible=False
+            )
+            
+            wandb_tracker_name = gr.Textbox(
+                label="Wandb Tracker Name",
+                info="Name of the wandb tracker",
+                visible=False
+            )
+            
+            wandb_api_key = gr.Textbox(
+                label="Wandb API Key",
+                info="Wandb API Key (https://wandb.ai/authorize)",
+                visible=False
+            )
+            
+            def toggle_enable_wandb(checked):
+                return gr.update(visible=checked), gr.update(visible=checked), gr.update(visible=checked)
+
+            enable_wandb.change(
+                toggle_enable_wandb,
+                inputs=enable_wandb,
+                outputs=[wandb_run_name, wandb_tracker_name, wandb_api_key]
+            )     
     
         with gr.Row():
             with gr.Column(scale=1):
@@ -1440,7 +1513,7 @@ with gr.Blocks(theme=theme) as demo:
     def handle_train_click(
         dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
         transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-        gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks
+        gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
     ):
         
         with process_lock:
@@ -1450,7 +1523,7 @@ with gr.Blocks(theme=theme) as demo:
         message, pid = train_model(
             dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
             transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
-            gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks
+            gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
         )
         
         if pid:
@@ -1488,7 +1561,7 @@ with gr.Blocks(theme=theme) as demo:
             num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
             eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
             activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
-            video_clip_mode, resume_from_checkpoint, only_double_blocks
+            video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
         ],
         outputs=[output, training_process_pid, train_button, stop_button],
         api_name=None
@@ -1556,9 +1629,32 @@ with gr.Blocks(theme=theme) as demo:
             frame_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
             eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps,
             checkpoint_every_n_minutes, activation_checkpointing, partition_method,
-            save_dtype, caching_batch_size, steps_per_print, video_clip_mode
+            save_dtype, caching_batch_size, steps_per_print, video_clip_mode, enable_wandb,
+            wandb_run_name, wandb_tracker_name, wandb_api_key
         ]
     )
     
+    
+def parse_args():
+    parser = argparse.ArgumentParser(description="Gradio Interface for LoRA Training on Hunyuan Video")
+
+    parser.add_argument("--local", action="store_true", help="Run the interface locally")
+
+    args = parser.parse_args()
+
+    return args
+
 if __name__ == "__main__":
-    demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=["/workspace", "."])
+    args = parse_args()
+    
+    if args.local:
+        MODEL_DIR = os.path.join(os.getcwd(), "models")
+        BASE_DATASET_DIR = os.path.join(os.getcwd(), "datasets")
+        OUTPUT_DIR = os.path.join(os.getcwd(), "outputs")
+        CONFIG_DIR = os.path.join(os.getcwd(), "configs")
+        
+    # Create directories if they don't exist
+    for dir_path in [MODEL_DIR, BASE_DATASET_DIR, OUTPUT_DIR, CONFIG_DIR]:
+        os.makedirs(dir_path, exist_ok=True)
+    
+    demo.launch(server_name="0.0.0.0", server_port=7860, allowed_paths=["/workspace", ".", os.getcwd()])
