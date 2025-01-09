@@ -134,11 +134,13 @@ Access the Jupiter lab UI at `http://localhost:8888`.
 
 Use these options to tailor the setup to your environment and requirements.
 
-#### Update Image Docker
+#### Update Image Docker (Important)
 
 To update the docker image with the new changes, if you already have the image on your machine, you can run the command: 
 
 `docker pull alissonpereiraanjos/diffusion-pipe-interface:latest`
+
+This is very important so that you have all the updates, it is good to always update the image before running the container, this is for those who run in Docker locally, because when running through the runpod this is done every time you create a new pod.
 
 ### Running on RunPod
 
