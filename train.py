@@ -225,8 +225,8 @@ if __name__ == '__main__':
         wandb_api_key=config['monitoring']['wandb_api_key']
         logging_dir = config['monitoring']['log_dir']
         if wandb_api_key is not None and wandb_tracker_name is not None and wandb_run_name is not None:
-            wandb.init(project=wandb_tracker_name, config=config, name=wandb_run_name, dir=logging_dir)
             wandb.login(key=wandb_api_key)
+            wandb.init(project=wandb_tracker_name, config=config, name=wandb_run_name, dir=logging_dir)
             
     # import sys, PIL
     # test_image = sys.argv[1]

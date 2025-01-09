@@ -1,5 +1,11 @@
 This repository is a fork of the original repository ([diffusion-pipe](https://github.com/tdrussell/diffusion-pipe)) but its objective is to provide a gradio interface as well as a docker image to facilitate training in any environment that supports docker (windows, linux) without any difficulty. You can also use the interface without using docker and you need to do the normal installation process that is in the original README and then instead of running train.py directly you can run gradio_interface.py.
 
+### Note
+
+I can't activate the issues section for this repository because it's a fork and I probably need permission for that. If you have any very complex issues regarding the interface, send me a message on my civitiai profile.
+
+[My Profile](https://civitai.com/user/alissonerdx)
+
 ## Gradio Interface
 
 ![preview gradio](/preview-gradio.png)
