@@ -41,6 +41,27 @@ process_lock = threading.Lock()
 
 log_queue = queue.Queue()
 
+# Define custom CSS for styling the log box and search box
+custom_log_box_css = """
+#log_box textarea {
+    overflow-y: scroll;
+    max-height: 400px;  /* Set a max height for the log box */
+    white-space: pre-wrap;  /* Preserve line breaks and white spaces */
+    border: 1px solid #ccc;
+    padding: 10px;
+    font-family: monospace;
+    scrollbar-width: thin!important;
+}
+
+#file_explorer {
+max-height: 374px!important;
+}
+
+#file_explorer .file-wrap {
+max-height: 320px!important;
+}
+"""
+
 def read_subprocess_output(proc, log_queue):
     for line in iter(proc.stdout.readline, b''):
         decoded_line = line.decode('utf-8')
@@ -606,8 +627,9 @@ def upload_dataset(files, current_dataset, action, dataset_name=None):
     if action == "start":
         if not dataset_name:
             return current_dataset, "Please provide a dataset name.", []
-        # Ensure the dataset name does not contain invalid characters
+        # Clean and format the dataset name
         dataset_name = "".join(c for c in dataset_name if c.isalnum() or c in (' ', '_', '-')).rstrip()
+        dataset_name = dataset_name.replace(" ", "_")  # Replace spaces with underscores
         dataset_dir = os.path.join(BASE_DATASET_DIR, dataset_name)
         if os.path.exists(dataset_dir):
             return current_dataset, f"Dataset '{dataset_name}' already exists. Please choose a different name.", []
@@ -663,6 +685,7 @@ def upload_dataset(files, current_dataset, action, dataset_name=None):
                 continue
 
     return current_dataset, f"Uploaded files: {', '.join(uploaded_files)}", show_media(current_dataset)
+
 
 def update_ui_with_config(config_values):
     """
@@ -1015,10 +1038,33 @@ theme = gr.themes.Monochrome(
     ]
 )
 
+def get_selected_file(file_paths):
+    """
+    Handles file selection and prepares it for download.
+    """
+    # Handle the case when file_paths is a string (single file)
+    if isinstance(file_paths, str):
+        if os.path.isdir(file_paths):
+            return None, "Please select a single file and not a folder."
+        if not os.path.exists(file_paths):
+            return None, f"File not found: {file_paths}"
+        return file_paths, f"File '{os.path.basename(file_paths)}' ready for download."
+
+    # Handle the case when file_paths is a list (multiple files)
+    if isinstance(file_paths, list) and file_paths:
+        file_path = file_paths[0]  # Use the first file
+        if os.path.isdir(file_path):
+            return None, "Please select a single file and not a folder."
+        if not os.path.exists(file_path):
+            return None, f"File not found: {file_path}"
+        return file_path, f"File '{os.path.basename(file_path)}' ready for download."
+
+    return None, "Invalid or no file selected."
+
 # Gradio Interface
-with gr.Blocks(theme=theme) as demo:
+with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
     gr.Markdown("# LoRA Training Interface for Hunyuan Video")
-    
+
     gr.Markdown("### Step 1: Dataset Management\nChoose to create a new dataset or select an existing one.")
     
     with gr.Row():
@@ -1484,6 +1530,15 @@ with gr.Blocks(theme=theme) as demo:
                 
                 train_button = gr.Button("Start Training", visible=True)
                 stop_button = gr.Button("Stop Training", visible=False)
+                
+                # Add fields for displaying current step and epoch
+                with gr.Row():
+                    total_steps = gr.State(0)
+                    steps_per_epoch = gr.State(0)
+                    current_epoch_display = gr.Textbox(label="Epoch Progress", interactive=False, value="Epoch: N/A")
+                    current_step_display = gr.Textbox(label="Step Progress", interactive=False, value="Step: N/A")
+
+
                 with gr.Row():
                     with gr.Column(scale=1):
                         output = gr.Textbox(
@@ -1499,16 +1554,27 @@ with gr.Blocks(theme=theme) as demo:
     gr.Markdown("### Download Files")
     
     with gr.Row():
-        explorer = gr.FileExplorer(root_dir="/workspace", interactive=False, label="File Explorer")
+        explorer = gr.FileExplorer(root_dir="/workspace", interactive=True, label="File Explorer", file_count="single", elem_id="file_explorer")     
+        with gr.Column():   
+            gr.Markdown("### Select a single file from the file explorer for download.")
+            download_status = gr.Textbox(label="Single File Download Status", interactive=False)
+            download_file = gr.File(label="Download Single File", interactive=False)
         
-        
+
+            # Event: When a file is selected in the explorer
+        explorer.change(
+            fn=get_selected_file,
+            inputs=[explorer],
+            outputs=[download_file, download_status],
+        )
+            
     with gr.Row():
         with gr.Column():
-            download_options = gr.CheckboxGroup(["Outputs", "Dataset", "Configs"], label="Download Options"),
+            download_options = gr.CheckboxGroup(["Outputs", "Dataset", "Configs"], label="Bulk Download Options"),
             download_button = gr.Button("Download ZIP", visible=True)
         download_zip = gr.File(label="Download ZIP", visible=True)
-        download_status = gr.Textbox(label="Download Status", interactive=False, visible=True)
-        
+        download_status = gr.Textbox(label="Bulk Download Status", interactive=False, visible=True)
+
     
     def handle_train_click(
         dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
@@ -1536,19 +1602,106 @@ with gr.Blocks(theme=theme) as demo:
         message = stop_training(pid)
         return message, gr.update(visible=True), gr.update(visible=False)
 
-    def refresh_logs(log_box, pid):
-        if pid is not None:
-            return update_logs(log_box, pid)
-        return log_box
-    
-    log_timer = gr.Timer(0.5, active=False) 
-    
+    def refresh_logs(
+        log_box, 
+        pid, 
+        current_epoch_display, 
+        current_step_display, 
+        total_steps, 
+        steps_per_epoch, 
+        last_step, 
+        last_epoch
+    ):
+        new_logs = ""
+        updated_epoch = last_epoch
+        updated_step = last_step
+        total_steps_value = total_steps
+        steps_per_epoch_value = steps_per_epoch
+
+        while not log_queue.empty():
+            log_line = log_queue.get()
+            new_logs += log_line
+
+            # Extract total steps
+            if "Total steps:" in log_line:
+                try:
+                    total_steps_value = int(log_line.split("Total steps:")[1].strip())
+                except Exception as e:
+                    print(f"Error parsing total steps: {e}")
+
+            # Extract steps per epoch
+            if "Steps per epoch:" in log_line:
+                try:
+                    steps_per_epoch_value = int(log_line.split("Steps per epoch:")[1].strip())
+                except Exception as e:
+                    print(f"Error parsing steps per epoch: {e}")
+
+            # Extract step information
+            if "step=" in log_line:
+                try:
+                    updated_step = int(log_line.split("step=")[1].split(",")[0].strip())
+                except Exception as e:
+                    print(f"Error parsing step info: {e}")
+
+            # Extract epoch information
+            if "Started new epoch:" in log_line:
+                try:
+                    updated_epoch = int(log_line.split("Started new epoch:")[1].strip())
+                except Exception as e:
+                    print(f"Error parsing epoch info: {e}")
+
+        # Calculate progress
+        total_epochs = total_steps_value // steps_per_epoch_value if steps_per_epoch_value else 0
+        if updated_epoch is None:
+            updated_epoch = 1  # Default to epoch 1 if no epoch data is available
+
+        epoch_progress = f"Epoch: {updated_epoch} / {total_epochs}"
+        step_percentage = (updated_step / total_steps_value * 100) if total_steps_value else 0
+        step_progress = f"Step: {updated_step} / {total_steps_value} ({step_percentage:.1f}%)"
+
+        # Return updated values
+        return (
+            log_box + new_logs,
+            epoch_progress,
+            step_progress,
+            total_steps_value,
+            steps_per_epoch_value,
+            updated_step,
+            updated_epoch,
+        )
+
+
+    # Persistent states for step and epoch tracking
+    last_step = gr.State(0)
+    last_epoch = gr.State(1)
+
+    # Timer to refresh logs
+    log_timer = gr.Timer(0.5, active=False)
+
+    # Connect refresh_logs to update the log box and progress displays
     log_timer.tick(
         fn=refresh_logs,
-        inputs=[output, training_process_pid],
-        outputs=output
+        inputs=[
+            output,                  # Log box
+            training_process_pid,    # Process ID
+            current_epoch_display,   # Current epoch display
+            current_step_display,    # Current step display
+            total_steps,             # Total steps state
+            steps_per_epoch,         # Steps per epoch state
+            last_step,               # Last step state
+            last_epoch,              # Last epoch state
+        ],
+        outputs=[
+            output,                  # Updated log box
+            current_epoch_display,   # Updated epoch display
+            current_step_display,    # Updated step display
+            total_steps,             # Updated total steps state
+            steps_per_epoch,         # Updated steps per epoch state
+            last_step,               # Updated last step state
+            last_epoch,              # Updated last epoch state
+        ]
     )
-    
+
     def activate_timer():
         return gr.update(active=True)
     
