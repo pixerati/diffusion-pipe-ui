@@ -1339,7 +1339,7 @@ with gr.Blocks(theme=theme) as demo:
             resolutions_input = gr.Textbox(
                 label="Resolutions",
                 value="[512]",
-                info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024]"
+                info="Resolutions to train on, given as a list. Example: [512] or [512, 768, 1024] or [[512, 512], [1280, 720]], defining only one side it will be a square, [512] = 512x512"
             )
                 
         gr.Markdown("#### Optimizer Parameters")
