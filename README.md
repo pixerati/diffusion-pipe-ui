@@ -62,7 +62,7 @@ You can mount host directories to store models and training outputs outside the 
 ```bash
 docker run --gpus all -it \
   -v /path/to/models:/workspace/models \
-  -v /path/to/output:/workspace/output \
+  -v /path/to/outputs:/workspace/outputs \
   -v /path/to/datasets:/workspace/datasets \
   -v /path/to/configs:/workspace/configs \
   -p 8888:8888 \
@@ -76,7 +76,7 @@ docker run --gpus all -it \
 ```bash
 docker run --gpus all -it \
   -v D:\AI\hunyuan\models:/workspace/models \
-  -v D:\AI\hunyuan\output:/workspace/output \
+  -v D:\AI\hunyuan\outputs:/workspace/outputs \
   -v D:\AI\hunyuan\datasets:/workspace/datasets \
   -v D:\AI\hunyuan\configs:/workspace/configs \
   -p 8888:8888 \
@@ -92,7 +92,7 @@ By default, the container downloads the required models during the first initial
 ```bash
 docker run --gpus all -it \
   -v /path/to/models:/workspace/models \
-  -v /path/to/output:/workspace/output \
+  -v /path/to/outputs:/workspace/outputs \
   -v /path/to/datasets:/workspace/datasets \
   -v /path/to/configs:/workspace/configs \
   -p 8888:8888 \
@@ -109,7 +109,7 @@ If you prefer to run the container in the background without an interactive term
 ```bash
 docker run --gpus all -d \
   -v /path/to/models:/workspace/models \
-  -v /path/to/output:/workspace/output \
+  -v /path/to/outputs:/workspace/outputs \
   -v /path/to/datasets:/workspace/datasets \
   -v /path/to/configs:/workspace/configs \
   -p 8888:8888 \
