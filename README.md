@@ -161,7 +161,7 @@ Tip: If you train often, I advise you to create a Network Volume in the runpod a
 
 # Original README (diffusion-pipe)
 
-Currently supports Flux, LTX-Video, and HunyuanVideo.
+Currently supports SDXL, Flux, LTX-Video, and HunyuanVideo.
 
 **Work in progress and highly experimental.** It is unstable and not well tested. Things might not work right.
 
@@ -170,17 +170,22 @@ Currently supports Flux, LTX-Video, and HunyuanVideo.
 - Full fine tune support for:
     - Flux
 - LoRA support for:
-    - Flux, LTX-Video, HunyuanVideo
+    - SDXL, Flux, LTX-Video, HunyuanVideo
 - Useful metrics logged to Tensorboard
 - Compute metrics on a held-out eval set, for measuring generalization
 - Training state checkpointing and resuming from checkpoint
 - Efficient multi-process, multi-GPU pre-caching of latents and text embeddings
 - Easily add support for new models by implementing a single subclass
 
+## Recent changes
+- 2024-01-17
+  - For HunyuanVideo VAE when loaded via the ```vae_path``` option, fixed incorrect tiling sample size. The training loss is now moderately lower overall. Quality of trained LoRAs should be improved, but the improvement is likely minor.
+  - You should update any cached latents made before this change. Delete the cache directory inside the dataset directories, or run the training script with the ```--regenerate_cache``` command line option.
+- 2024-01-13
+  - Basic SDXL support. LoRA only. Many options present in other training scripts are not implemented. If you want more features added, PRs are welcome.
 
 ## Windows support
-There are reports that it doesn't work on Windows. This is because Deepspeed only has [partial Windows support](https://github.com/microsoft/DeepSpeed/blob/master/blogs/windows/08-2024/README.md). However, at least one user was able to get it running and training successfully on Windows Subsystem for Linux, specifically WSL 2. If you must use Windows I recommend trying WSL 2.
-
+It will be difficult or impossible to make training work on native Windows. This is because Deepspeed only has [partial Windows support](https://github.com/microsoft/DeepSpeed/blob/master/blogs/windows/08-2024/README.md). Deepspeed is a hard requirement because the entire training script is built around Deepspeed pipeline parallelism. However, it will work on Windows Subsystem for Linux, specifically WSL 2. If you must use Windows I recommend trying WSL 2.
 
 ## Installing
 Clone the repository:
@@ -254,6 +259,8 @@ Two flags are relevant for caching. ```--cache_only``` does the caching flow, th
 
 ## LoRA format
 LoRAs use Diffusers to save when possible. Where Diffusers does not have official LoRA support for a model, the state_dict format follows the typical Diffusers convention: the weight keys are formatted as PEFT does, and prefixed with the attribute name of the model on the Diffusers pipeline object (e.g. prefixed with "transformer.").
+
+SDXL is an exception; the LoRAs are saved in Kohya sd-scripts format.
 
 ## Extra
 You can check out my [qlora-pipe](https://github.com/tdrussell/qlora-pipe) project, which is basically the same thing as this but for LLMs.
