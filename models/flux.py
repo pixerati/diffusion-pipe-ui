@@ -155,7 +155,7 @@ class FluxPipeline(BasePipeline):
     def get_text_encoders(self):
         return [self.text_encoder, self.text_encoder_2]
 
-    def save_adapter(self, save_dir, peft_state_dict):
+    def save_adapter(self, save_dir, peft_state_dict, save_name):
         adapter_type = self.config['adapter']['type']
         if adapter_type == 'lora':
             self.save_lora_weights(save_dir, transformer_lora_layers=peft_state_dict)

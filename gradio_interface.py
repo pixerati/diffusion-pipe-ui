@@ -723,7 +723,7 @@ def update_ui_with_config(config_values):
         "max_ar": 2.0,
         "num_ar_buckets": 7,
         "ar_buckets": None,
-        "frame_buckets": json.dumps([1, 33, 65]),
+        "frame_buckets": json.dumps([1, 33]),
         "gradient_clipping": 1.0,
         "warmup_steps": 100,
         "eval_before_first_step": True,
@@ -878,6 +878,33 @@ def update_ui_with_config(config_values):
         wandb_api_key
     )
 
+def get_latest_folder(directory):
+    # List all folders in the directory
+    folders = folders = [os.path.join(directory, folder) for folder in os.listdir(directory) if os.path.isdir(os.path.join(directory, folder))]
+    
+    if not folders:
+        return None  # Return None if there are no folders
+
+    # Sort folders by creation time (most recent first)
+    latest_folder = max(folders, key=os.path.getctime)
+    
+    return os.path.basename(latest_folder)  # Return only the folder name
+
+def force_save(output_dir, file_name):
+    latest_folder_path = get_latest_folder(output_dir)  # Get the latest folder path
+    
+    if latest_folder_path:
+        # Create the full path for the save_model file
+        save_model_path = os.path.join(output_dir, latest_folder_path, file_name)
+        
+        # Write an empty file
+        with open(save_model_path, "w") as f:
+            f.write("")  # Empty content; you can write specific content if needed
+        
+        return save_model_path  # Return the full path of the saved file
+
+    return None  # Return None if no folder is found
+                
 def show_media(dataset_dir):
     """Display uploaded images and .mp4 videos in a single gallery."""
     if not dataset_dir or not os.path.exists(dataset_dir):
@@ -1372,8 +1399,8 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
             )
             frame_buckets = gr.Textbox(
                 label="Frame Buckets",
-                value="[1, 33, 65]",
-                info="Videos will be assigned to the first frame bucket that the video is greater than or equal to in length. Example: [1, 33, 65], 1 for images"
+                value="[1, 33]",
+                info="Videos will be assigned to the first frame bucket that the video is greater than or equal to in length. Example: [1, 33], 1 for images, if you have > 24GB or multiple GPUs: [1, 33, 65, 97]"
             )
         
         with gr.Row():
@@ -1537,7 +1564,10 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
                     steps_per_epoch = gr.State(0)
                     current_epoch_display = gr.Textbox(label="Epoch Progress", interactive=False, value="Epoch: N/A")
                     current_step_display = gr.Textbox(label="Step Progress", interactive=False, value="Step: N/A")
-
+                    
+                with gr.Row():
+                    force_save_model_button = gr.Button("Force Save Model", visible=False)
+                    force_save_checkpoint_button = gr.Button("Force Save Checkpoint", visible=False)
 
                 with gr.Row():
                     with gr.Column(scale=1):
@@ -1547,6 +1577,22 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
                             interactive=False,
                             elem_id="log_box"
                         )
+                
+                def force_save_model(output_dir_path):
+                    force_save(output_dir_path, "save_model")
+                    
+                def force_save_checkpoint(output_dir_path):
+                    force_save(output_dir_path, "save")
+                    
+                force_save_model_button.click(
+                    fn=force_save_model,
+                    inputs=[output_dir]
+                )
+                
+                force_save_checkpoint_button.click(
+                    fn=force_save_checkpoint,
+                    inputs=[output_dir]
+                )
                         
     hidden_config = gr.JSON(label="Hidden Configuration", visible=False)
     
@@ -1594,9 +1640,9 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
         
         if pid:
             # Disable the training button while training is active
-            return message, pid, gr.update(visible=False), gr.update(visible=True)
+            return message, pid, gr.update(visible=False), gr.update(visible=True), gr.update(visible=True), gr.update(visible=True)
         else:
-            return message, pid, gr.update(visible=True), gr.update(visible=False)
+            return message, pid, gr.update(visible=True), gr.update(visible=False),  gr.update(visible=False),  gr.update(visible=False)
 
     def handle_stop_click(pid):
         message = stop_training(pid)
@@ -1704,7 +1750,7 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
 
     def activate_timer():
         return gr.update(active=True)
-    
+                    
     train_click = train_button.click(
         fn=handle_train_click,
         inputs=[
@@ -1716,7 +1762,7 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
             activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print,
             video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
         ],
-        outputs=[output, training_process_pid, train_button, stop_button],
+        outputs=[output, training_process_pid, train_button, stop_button, force_save_model_button, force_save_checkpoint_button],
         api_name=None
     ).then(
         fn=lambda: gr.update(active=True),  # Activate the Timer

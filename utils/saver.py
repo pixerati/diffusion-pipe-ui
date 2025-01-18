@@ -55,7 +55,7 @@ class Saver:
         self.model_engine = model_engine
         self.pipeline_model = pipeline_model
 
-    def save_adapter(self, name):
+    def save_adapter(self, name, save_name='adapter_model'):	
         dp_id = self.model_engine.grid.get_data_parallel_rank()
         stage_id = self.model_engine.grid.get_pipe_parallel_rank()
         save_dir = self.save_root / name
@@ -80,8 +80,11 @@ class Saver:
             state_dict = {}
             for path in tmp_dir.glob('*.bin'):
                 state_dict.update(torch.load(path, weights_only=True, map_location='cpu'))
-            self.model.save_adapter(save_dir, state_dict)
+            self.model.save_adapter(save_dir, state_dict, save_name)
             shutil.copy(self.args.config, save_dir)
+            dataset_config_path = Path(self.args.config).parent / "dataset_config.toml"
+            if os.path.exists(dataset_config_path) and os.path.isfile(dataset_config_path):
+                shutil.copy(dataset_config_path, save_dir)
             shutil.rmtree(tmp_dir)
 
     def save_full_model(self, name, max_shard_size='5GB'):
@@ -111,7 +114,8 @@ class Saver:
         if is_main_process():
             print(f'Saving model to directory {name}')
         if self.is_adapter:
-            self.save_adapter(name)
+            save_name = Path(self.save_root).parent.name
+            self.save_adapter(name, f'{save_name}_{name}')
         else:
             self.save_full_model(name)
 
@@ -146,8 +150,10 @@ class Saver:
         # Look at some simple "signal files" the user can write to save and optionally quit manually
         should_manually_save = False
         should_manually_quit = False
+        should_manually_save_model = False
         save_signal_file = self.save_root / 'save'
         save_quit_signal_file = self.save_root / 'save_quit'
+        save_model_signal_file = self.save_root / 'save_model'
         if save_signal_file.exists() and save_signal_file.is_file():
             should_manually_save = True
             dist.barrier()
@@ -159,6 +165,11 @@ class Saver:
             dist.barrier()
             if is_main_process():
                 os.remove(save_quit_signal_file)
+        elif save_model_signal_file.exists() and save_model_signal_file.is_file():
+            should_manually_save_model = True
+            dist.barrier()
+            if is_main_process():
+                os.remove(save_model_signal_file)
 
         # TODO: support save_every_n_steps in addition to save_every_n_epochs. Maybe only one should be set?
         # if step % self.config['save_every_n_steps'] == 0 or should_manually_save:
@@ -166,6 +177,9 @@ class Saver:
 
         if need_to_checkpoint(self.config) or should_manually_save:
             self.save_checkpoint(step)
+            
+        if should_manually_save_model:
+            self.save_model(f"step{step}")
 
         if should_manually_quit:
             print('Manually quitting')

@@ -7,6 +7,7 @@ import time
 import random
 import json
 import inspect
+from pathlib import Path
 
 import toml
 import deepspeed
@@ -18,6 +19,7 @@ from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 import multiprocess as mp
 import numpy as np
+import pathlib
 
 from utils import dataset as dataset_util
 from utils import common
@@ -289,6 +291,9 @@ if __name__ == '__main__':
         run_dir = os.path.join(config['output_dir'], datetime.now(timezone.utc).strftime('%Y%m%d_%H-%M-%S'))
         os.makedirs(run_dir, exist_ok=True)
         shutil.copy(args.config, run_dir)
+        dataset_config_path = Path(args.config).parent / "dataset_config.toml"
+        if os.path.exists(dataset_config_path) and os.path.isfile(dataset_config_path):
+            shutil.copy(dataset_config_path, run_dir)
     # wait for all processes then get the most recent dir (may have just been created)
     dist.barrier()
     run_dir = get_most_recent_run_dir(config['output_dir'])

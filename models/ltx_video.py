@@ -36,11 +36,11 @@ class LTXVideoPipeline(BasePipeline):
     def get_text_encoders(self):
         return [self.text_encoder]
 
-    def save_adapter(self, save_dir, peft_state_dict):
+    def save_adapter(self, save_dir, peft_state_dict, save_name):
         self.peft_config.save_pretrained(save_dir)
         # Convention is to have "transformer." prefix
         peft_state_dict = {'transformer.'+k: v for k, v in peft_state_dict.items()}
-        safetensors.torch.save_file(peft_state_dict, save_dir / 'adapter_model.safetensors', metadata={'format': 'pt'})
+        safetensors.torch.save_file(peft_state_dict, save_dir / f'{save_name}.safetensors', metadata={'format': 'pt'})
 
     def save_model(self, save_dir, diffusers_sd):
         raise NotImplementedError()

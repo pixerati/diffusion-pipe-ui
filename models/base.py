@@ -153,7 +153,7 @@ class BasePipeline:
             if p.requires_grad:
                 p.data = p.data.to(adapter_config['dtype'])
 
-    def save_adapter(self, save_dir, peft_state_dict):
+    def save_adapter(self, save_dir, peft_state_dict, save_name):
         raise NotImplementedError()
 
     def load_adapter_weights(self, adapter_path):

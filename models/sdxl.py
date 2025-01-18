@@ -131,14 +131,14 @@ class SDXLPipeline(BasePipeline):
             if p.requires_grad:
                 p.data = p.data.to(adapter_config['dtype'])
 
-    def save_adapter(self, save_dir, peft_state_dict):
+    def save_adapter(self, save_dir, peft_state_dict, save_name):
         adapter_type = self.config['adapter']['type']
         if adapter_type == 'lora':
             # TODO: should we do any additional checks here? This helpful function appears to completely convert
             # the PEFT format state_dict to kohya format. Every key in the lora is correctly loaded by Forge.
             # But all these different formats are a mess and I hardly understand it. This seems to work though.
             kohya_sd = diffusers.utils.state_dict_utils.convert_state_dict_to_kohya(peft_state_dict)
-            safetensors.torch.save_file(kohya_sd, save_dir / 'lora.safetensors', metadata={'format': 'pt'})
+            safetensors.torch.save_file(kohya_sd, save_dir / f'{save_name}.safetensors', metadata={'format': 'pt'})
         else:
             raise NotImplementedError(f'Adapter type {adapter_type} is not implemented')
 
