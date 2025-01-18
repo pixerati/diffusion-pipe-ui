@@ -4,8 +4,8 @@ This repository is a fork of the original repository ([diffusion-pipe](https://g
 ### Updates
 
 - 2024-01-17
-For the HunyuanVideo VAE when loaded via the vae_path option, incorrect mosaic sample size fixed. Training loss is now moderately lower overall. The quality of trained LoRAs should be improved, but the improvement is likely small.
-You should update any cached latencies made prior to this change. Either delete the cache directory within the dataset directories or run the training script with the --regenerate_cache command line option (this functionality is not yet added to the interface, but you can create a new dataset which is the same as running this command).
+  - For the HunyuanVideo VAE when loaded via the vae_path option, incorrect mosaic sample size fixed. Training loss is now moderately lower overall. The quality of trained LoRAs should be improved, but the improvement is likely small.
+  - You should update any cached latencies made prior to this change. Either delete the cache directory within the dataset directories or run the training script with the --regenerate_cache command line option (this functionality is not yet added to the interface, but you can create a new dataset which is the same as running this command).
 
 ### Note
 
