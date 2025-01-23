@@ -1417,10 +1417,10 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
                 
         gr.Markdown("#### Optimizer Parameters")
         with gr.Row():
-            optimizer_type = gr.Textbox(
+            optimizer_type = gr.Dropdown(
                 label="Optimizer Type",
+                choices=['adamw', 'adamw8bit', 'adamw_optimi', 'stableadamw', 'sgd', 'adamw8bitKahan', 'offload'],
                 value="adamw_optimi",
-                info="Type of optimizer (adamw, adamw8bit, adamw_optimi, stableadamw, sgd, adamw8bitKahan, offload))"
             )
             betas = gr.Textbox(
                 label="Betas",
