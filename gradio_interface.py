@@ -166,6 +166,9 @@ def create_training_config(
     """
     Creates a training configuration dictionary from individual parameters.
     """
+    
+    num_gpus = int(os.getenv("NUM_GPUS", "1"))
+    
     training_config = {
         "output_dir": output_dir,
         "dataset": dataset_config_path,
@@ -186,6 +189,7 @@ def create_training_config(
         "caching_batch_size": caching_batch_size,
         "steps_per_print": steps_per_print,
         "video_clip_mode": video_clip_mode,
+        "pipeline_stages": num_gpus,
         # Model configuration with fixed type and sampling method
         "model": {
             "type": "hunyuan-video",
