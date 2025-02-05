@@ -61,7 +61,6 @@ steps_per_print = 1
 video_clip_mode = 'single_middle'
 
 [model]
-# flux, ltx-video, or hunyuan-video
 type = 'hunyuan-video'
 # Can load Hunyuan Video entirely from the ckpt path set up for the official inference scripts.
 #ckpt_path = '/home/anon/HunyuanVideo/ckpts'
@@ -83,9 +82,18 @@ timestep_sample_method = 'logit_normal'
 # # Path to Huggingface Diffusers directory for Flux
 # diffusers_path = '/data2/imagegen_models/FLUX.1-dev'
 # # You can override the transformer from a BFL format checkpoint.
-# transformer_path = '/data2/imagegen_models/flux-dev-single-files/consolidated_s6700-schnell.safetensors'
+# #transformer_path = '/data2/imagegen_models/flux-dev-single-files/consolidated_s6700-schnell.safetensors'
 # dtype = 'bfloat16'
 # flux_shift = true
+
+# ostris/Flex.1-alpha example
+# [model]
+# type = 'flux'
+# diffusers_path = '/data2/imagegen_models/Flex.1-alpha'
+# dtype = 'bfloat16'
+# flux_shift = true
+# # This model is designed to be finetuned with the guidance embedding bypassed
+# bypass_guidance_embedding = true
 
 # LTV-Video example
 # [model]
@@ -101,6 +109,8 @@ timestep_sample_method = 'logit_normal'
 # dtype = 'bfloat16'
 # # You can train v-prediction models (e.g. NoobAI vpred) by setting this option.
 # #v_pred = true
+# # Min SNR is supported. Same meaning as sd-scripts
+# #min_snr_gamma = 5
 
 [adapter]
 type = 'lora'
