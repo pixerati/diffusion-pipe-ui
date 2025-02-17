@@ -20,6 +20,10 @@ einops
 accelerate
 loguru
 flash-attn
+omegaconf
+iopath
+termcolor
+hydra-core
 gradio
 wandb
 sageattention==1.0.6
