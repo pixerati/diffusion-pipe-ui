@@ -27,3 +27,5 @@ hydra-core
 gradio
 wandb
 sageattention==1.0.6
+easydict
+ftfy
