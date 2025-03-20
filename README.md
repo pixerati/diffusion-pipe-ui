@@ -2,6 +2,7 @@ This repository is a fork of the original repository ([diffusion-pipe](https://g
 
 
 ### Updates
+- 2025-03-19 (Add a New interface see branch new-ui) 
 - 2025-01-18 (gradio interface)
   - Now when saving the model instead of saving it with the name adapter_model.safetensors it will save the name of the dataset + the epoch.
   - Added 2 buttons to force saving the model and the checkpoint.
