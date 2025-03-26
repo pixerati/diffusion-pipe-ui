@@ -24,7 +24,7 @@ omegaconf
 iopath
 termcolor
 hydra-core
-gradio
+gradio==5.22
 wandb
 sageattention==1.0.6
 easydict
