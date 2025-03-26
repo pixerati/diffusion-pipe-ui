@@ -1,8 +1,10 @@
+import os.path
+
 import safetensors
 import torch
 from torch import nn
 import torch.nn.functional as F
-from diffusers import LTXPipeline
+from diffusers import LTXPipeline, LTXVideoTransformer3DModel, AutoencoderKLLTXVideo
 
 from models.base import BasePipeline, PreprocessMediaFile, make_contiguous
 from utils.common import AUTOCAST_DTYPE
@@ -17,9 +19,15 @@ class LTXVideoPipeline(BasePipeline):
     def __init__(self, config):
         self.config = config
         self.model_config = self.config['model']
-
         dtype = self.model_config['dtype']
-        self.diffusers_pipeline = LTXPipeline.from_pretrained(self.model_config['diffusers_path'], torch_dtype=dtype)
+
+        diffusers_path = self.model_config['diffusers_path']
+        kwargs = {}
+        if single_file_path := self.model_config.get('single_file_path', None):
+            print(f'Loading transformer and VAE from {single_file_path}')
+            kwargs['transformer'] = LTXVideoTransformer3DModel.from_single_file(single_file_path, torch_dtype=dtype)
+            kwargs['vae'] = AutoencoderKLLTXVideo.from_single_file(single_file_path, torch_dtype=dtype)
+        self.diffusers_pipeline = LTXPipeline.from_pretrained(diffusers_path, torch_dtype=dtype, **kwargs)
 
         self.transformer.train()
         # We'll need the original parameter name for saving, and the name changes once we wrap modules for pipeline parallelism,
@@ -38,8 +46,8 @@ class LTXVideoPipeline(BasePipeline):
 
     def save_adapter(self, save_dir, peft_state_dict, save_name):
         self.peft_config.save_pretrained(save_dir)
-        # Convention is to have "transformer." prefix
-        peft_state_dict = {'transformer.'+k: v for k, v in peft_state_dict.items()}
+        # ComfyUI format
+        peft_state_dict = {'diffusion_model.'+k: v for k, v in peft_state_dict.items()}
         safetensors.torch.save_file(peft_state_dict, save_dir / f'{save_name}.safetensors', metadata={'format': 'pt'})
 
     def save_model(self, save_dir, diffusers_sd):
@@ -78,11 +86,20 @@ class LTXVideoPipeline(BasePipeline):
         latents = inputs['latents'].float()
         prompt_embeds = inputs['prompt_embeds']
         prompt_attention_mask = inputs['prompt_attention_mask']
+        mask = inputs['mask']
 
         bs, channels, num_frames, height, width = latents.shape
         latents = self._pack_latents(
             latents, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
         )
+
+        if mask is not None:
+            mask = mask.unsqueeze(1)  # make mask (bs, 1, img_h, img_w)
+            mask = F.interpolate(mask, size=(height, width), mode='nearest-exact')  # resize to latent spatial dimension
+            mask = mask.unsqueeze(2)  # make mask same number of dims as target
+            mask = self._pack_latents(
+                mask, self.transformer_spatial_patch_size, self.transformer_temporal_patch_size
+            )
 
         timestep_sample_method = self.model_config.get('timestep_sample_method', 'logit_normal')
 
@@ -119,7 +136,7 @@ class LTXVideoPipeline(BasePipeline):
         rope_interpolation_scale_time = torch.full((bs,), 1 / latent_frame_rate)
         rope_interpolation_scale_space = torch.full((bs,), self.vae_spatial_compression_ratio)
 
-        return x_t, prompt_embeds, prompt_attention_mask, t, num_frames, height, width, rope_interpolation_scale_time, rope_interpolation_scale_space, target
+        return (x_t, prompt_embeds, prompt_attention_mask, t, num_frames, height, width, rope_interpolation_scale_time, rope_interpolation_scale_space), (target, mask)
 
     def to_layers(self):
         transformer = self.transformer
@@ -143,7 +160,7 @@ class InitialLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        hidden_states, encoder_hidden_states, encoder_attention_mask, timestep, num_frames, height, width, rope_interpolation_scale_time, rope_interpolation_scale_space, target = inputs
+        hidden_states, encoder_hidden_states, encoder_attention_mask, timestep, num_frames, height, width, rope_interpolation_scale_time, rope_interpolation_scale_space = inputs
 
         rope_interpolation_scale = (
             rope_interpolation_scale_time[0].item(),
@@ -175,7 +192,7 @@ class InitialLayer(nn.Module):
         encoder_hidden_states = self.caption_projection(encoder_hidden_states)
         encoder_hidden_states = encoder_hidden_states.view(batch_size, -1, hidden_states.size(-1))
 
-        outputs = make_contiguous(hidden_states, encoder_hidden_states, temb, embedded_timestep, freqs_cos, freqs_sin, encoder_attention_mask, target)
+        outputs = make_contiguous(hidden_states, encoder_hidden_states, temb, embedded_timestep, freqs_cos, freqs_sin, encoder_attention_mask)
         for tensor in outputs:
             if torch.is_floating_point(tensor):
                 tensor.requires_grad_(True)
@@ -189,7 +206,7 @@ class TransformerLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        hidden_states, encoder_hidden_states, temb, embedded_timestep, freqs_cos, freqs_sin, encoder_attention_mask, target = inputs
+        hidden_states, encoder_hidden_states, temb, embedded_timestep, freqs_cos, freqs_sin, encoder_attention_mask = inputs
         hidden_states = self.block(
             hidden_states=hidden_states,
             encoder_hidden_states=encoder_hidden_states,
@@ -197,7 +214,7 @@ class TransformerLayer(nn.Module):
             image_rotary_emb=(freqs_cos, freqs_sin),
             encoder_attention_mask=encoder_attention_mask,
         )
-        return make_contiguous(hidden_states, encoder_hidden_states, temb, embedded_timestep, freqs_cos, freqs_sin, encoder_attention_mask, target)
+        return make_contiguous(hidden_states, encoder_hidden_states, temb, embedded_timestep, freqs_cos, freqs_sin, encoder_attention_mask)
 
 
 class OutputLayer(nn.Module):
@@ -212,16 +229,11 @@ class OutputLayer(nn.Module):
 
     @torch.autocast('cuda', dtype=AUTOCAST_DTYPE)
     def forward(self, inputs):
-        hidden_states, encoder_hidden_states, temb, embedded_timestep, freqs_cos, freqs_sin, encoder_attention_mask, target = inputs
+        hidden_states, encoder_hidden_states, temb, embedded_timestep, freqs_cos, freqs_sin, encoder_attention_mask = inputs
 
         scale_shift_values = self.scale_shift_table[None, None] + embedded_timestep[:, :, None]
         shift, scale = scale_shift_values[:, :, 0], scale_shift_values[:, :, 1]
 
         hidden_states = self.norm_out(hidden_states)
         hidden_states = hidden_states * (1 + scale) + shift
-        output = self.proj_out(hidden_states)
-
-        output = output.to(torch.float32)
-        target = target.to(torch.float32)
-        loss = F.mse_loss(output, target)
-        return loss
+        return self.proj_out(hidden_states)

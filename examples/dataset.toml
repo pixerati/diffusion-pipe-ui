@@ -30,7 +30,8 @@ num_ar_buckets = 7
 # ar_buckets = [1.0, 1.5]
 
 # For video training, you need to configure frame buckets (similar to aspect ratio buckets). There will always
-# be a frame bucket of 1 for images. Videos will be assigned to the first frame bucket that the video is greater than or equal to in length.
+# be a frame bucket of 1 for images. Videos will be assigned to the longest frame bucket possible, such that the video
+# is still greater than or equal to the frame bucket length.
 # But videos are never assigned to the image frame bucket (1); if the video is very short it would just be dropped.
 frame_buckets = [1, 33]
 # If you have >24GB VRAM, or multiple GPUs and use pipeline parallelism, or lower the spatial resolution, you could maybe train with longer frame buckets
@@ -41,8 +42,19 @@ frame_buckets = [1, 33]
 # Path to directory of images/videos, and corresponding caption files. The caption files should match the media file name, but with a .txt extension.
 # A missing caption file will log a warning, but then just train using an empty caption.
 path = '/home/anon/data/images/grayscale'
-# The dataset will act like it is duplicated this many times.
-num_repeats = 10
+
+# You can do masked training, where the mask indicates which parts of the image to train on. The masking is done in the loss function. The mask directory should have mask
+# images with the same names (ignoring the extension) as the training images. E.g. training image 1.jpg could have mask image 1.jpg, 1.png, etc. If a training image doesn't
+# have a corresponding mask, a warning is printed but training proceeds with no mask for that image. In the mask, white means train on this, black means mask it out. Values
+# in between black and white become a weight between 0 and 1, i.e. you can use a suitable value of grey for mask weight of 0.5. In actuality, only the R channel is extracted
+# and converted to the mask weight.
+# The mask_path can point to any directory containing mask images.
+#mask_path = '/home/anon/data/images/grayscale/masks'
+
+# How many repeats for 1 epoch. The dataset will act like it is duplicated this many times.
+# The semantics of this are the same as sd-scripts: num_repeats=1 means one epoch is a single pass over all examples (no duplication).
+num_repeats = 1
+
 # Example of overriding some settings, and using ar_buckets to directly specify ARs.
 # ar_buckets = [[448, 576]]
 # resolutions = [[448, 576]]
