@@ -46,7 +46,7 @@ custom_log_box_css = """
 #log_box textarea {
     overflow-y: scroll;
     max-height: 400px;  /* Set a max height for the log box */
-    white-space: pre-wrap;  /* Preserve line breaks and white spaces */
+    white-space: pre-wrap;  /* Preserve line breaks and white s paces */
     border: 1px solid #ccc;
     padding: 10px;
     font-family: monospace;

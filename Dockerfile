@@ -92,7 +92,7 @@ EXPOSE 6006
 
 # EXPOSE 5678
 
-
+RUN echo "copy"
 # Copy the entire project
 COPY --chmod=755 . /diffusion-pipe
 
