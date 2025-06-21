@@ -22,6 +22,9 @@ import multiprocess as mp
 import numpy as np
 import pathlib
 
+import multiprocessing as mp_std
+mp_std.set_start_method("fork", force=True)
+
 from utils import dataset as dataset_util
 from utils import common
 from utils.common import is_main_process, get_rank, DTYPE_MAP, empty_cuda_cache
