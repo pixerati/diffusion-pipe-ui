@@ -20,54 +20,6 @@ if [ ! -f "$INIT_MARKER" ]; then
     echo "Installing dependencies from requirements.txt..."
     pip install --no-cache-dir -r $REPO_DIR/requirements.txt
 
-    if [ "$DOWNLOAD_MODELS" = "true" ]; then
-        echo "DOWNLOAD_MODELS is true, downloading models..."
-        MODEL_DIR="/workspace/models"
-        mkdir -p "$MODEL_DIR"
-
-        # Clone llava-llama-3-8b-text-encoder-tokenizer repository
-        if [ ! -d "${MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer" ]; then
-            huggingface-cli download Kijai/llava-llama-3-8b-text-encoder-tokenizer --local-dir "${MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer"
-        else
-            echo "Skipping the model llava-llama-3-8b-text-encoder-tokenizer download because it already exists."
-        fi
-
-        # Download hunyuan_video_720_cfgdistill_fp8_e4m3fn model
-        if [ ! -f "${MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors" ]; then
-            huggingface-cli download Kijai/HunyuanVideo_comfy hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors --local-dir "${MODEL_DIR}"
-        else
-            echo "Skipping the model hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors download because it already exists."
-        fi
-
-        # Download hunyuan_video_720_cfgdistill_bf16 model
-        if [ ! -f "${MODEL_DIR}/hunyuan_video_720_cfgdistill_bf16.safetensors" ] && [ "${DOWNLOAD_BF16}" == "true" ]; then
-            huggingface-cli download Kijai/HunyuanVideo_comfy hunyuan_video_720_cfgdistill_bf16.safetensors --local-dir "${MODEL_DIR}"
-        fi
-
-        # Download hunyuan_video_vae_fp32 model
-        if [ ! -f "${MODEL_DIR}/hunyuan_video_vae_fp32.safetensors" ]; then
-            huggingface-cli download Kijai/HunyuanVideo_comfy hunyuan_video_vae_fp32.safetensors --local-dir "${MODEL_DIR}"
-        else
-            echo "Skipping the model hunyuan_video_vae_fp32.safetensors download because it already exists."
-        fi
-
-        # Download hunyuan_video_vae_fp16 model
-        if [ ! -f "${MODEL_DIR}/hunyuan_video_vae_bf16.safetensors" ]; then
-            huggingface-cli download Kijai/HunyuanVideo_comfy hunyuan_video_vae_bf16.safetensors --local-dir "${MODEL_DIR}"
-        else
-            echo "Skipping the model hunyuan_video_vae_bf16.safetensors download because it already exists."
-        fi
-
-        # Clone the entire CLIP repo
-        if [ ! -d "${MODEL_DIR}/clip-vit-large-patch14" ]; then
-            huggingface-cli download openai/clip-vit-large-patch14 --local-dir "${MODEL_DIR}/clip-vit-large-patch14"
-        else
-            echo "Skipping the model clip-vit-large-patch14 download because it already exists."
-        fi
-    else
-        echo "DOWNLOAD_MODELS is false, skipping model downloads."
-    fi
-
     # Create marker file
     touch "$INIT_MARKER"
     echo "Initialization complete."
@@ -75,7 +27,94 @@ else
     echo "Container already initialized. Skipping first-time setup."
 fi
 
-echo "Adding environmnent variables"
+# Model download logic - runs on every container start if DOWNLOAD_MODELS=true
+if [ "$DOWNLOAD_MODELS" = "true" ]; then
+    echo "DOWNLOAD_MODELS is true, checking for existing models..."
+    MODEL_DIR="/workspace/models"
+    mkdir -p "$MODEL_DIR"
+
+    # Function to check if a model file/directory exists and is not empty
+    check_model_exists() {
+        local model_path="$1"
+        if [ -d "$model_path" ]; then
+            # For directories, check if it contains files
+            if [ "$(ls -A "$model_path" 2>/dev/null)" ]; then
+                return 0  # Directory exists and is not empty
+            else
+                return 1  # Directory exists but is empty
+            fi
+        elif [ -f "$model_path" ]; then
+            # For files, check if file exists and has size > 0
+            if [ -s "$model_path" ]; then
+                return 0  # File exists and has content
+            else
+                return 1  # File exists but is empty
+            fi
+        else
+            return 1  # Path doesn't exist
+        fi
+    }
+
+    # Function to download model with better error handling
+    download_model() {
+        local model_name="$1"
+        local model_path="$2"
+        local download_args="$3"
+        
+        echo "Checking for model: $model_name at $model_path"
+        if check_model_exists "$model_path"; then
+            echo "✓ Model $model_name already exists at $model_path, skipping download."
+        else
+            echo "✗ Model $model_name not found or empty at $model_path, downloading..."
+            if huggingface-cli download $download_args; then
+                echo "✓ Successfully downloaded $model_name"
+            else
+                echo "✗ Failed to download $model_name"
+                return 1
+            fi
+        fi
+    }
+
+    # Download llava-llama-3-8b-text-encoder-tokenizer
+    download_model "llava-llama-3-8b-text-encoder-tokenizer" \
+        "${MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer" \
+        "Kijai/llava-llama-3-8b-text-encoder-tokenizer --local-dir ${MODEL_DIR}/llava-llama-3-8b-text-encoder-tokenizer"
+
+    # Download hunyuan_video_720_cfgdistill_fp8_e4m3fn
+    download_model "hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors" \
+        "${MODEL_DIR}/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors" \
+        "Kijai/HunyuanVideo_comfy hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors --local-dir ${MODEL_DIR}"
+
+    # Download hunyuan_video_720_cfgdistill_bf16 (conditional)
+    if [ "${DOWNLOAD_BF16}" = "true" ]; then
+        download_model "hunyuan_video_720_cfgdistill_bf16.safetensors" \
+            "${MODEL_DIR}/hunyuan_video_720_cfgdistill_bf16.safetensors" \
+            "Kijai/HunyuanVideo_comfy hunyuan_video_720_cfgdistill_bf16.safetensors --local-dir ${MODEL_DIR}"
+    else
+        echo "Skipping hunyuan_video_720_cfgdistill_bf16.safetensors download (DOWNLOAD_BF16=false)"
+    fi
+
+    # Download hunyuan_video_vae_fp32
+    download_model "hunyuan_video_vae_fp32.safetensors" \
+        "${MODEL_DIR}/hunyuan_video_vae_fp32.safetensors" \
+        "Kijai/HunyuanVideo_comfy hunyuan_video_vae_fp32.safetensors --local-dir ${MODEL_DIR}"
+
+    # Download hunyuan_video_vae_bf16
+    download_model "hunyuan_video_vae_bf16.safetensors" \
+        "${MODEL_DIR}/hunyuan_video_vae_bf16.safetensors" \
+        "Kijai/HunyuanVideo_comfy hunyuan_video_vae_bf16.safetensors --local-dir ${MODEL_DIR}"
+
+    # Download clip-vit-large-patch14
+    download_model "clip-vit-large-patch14" \
+        "${MODEL_DIR}/clip-vit-large-patch14" \
+        "openai/clip-vit-large-patch14 --local-dir ${MODEL_DIR}/clip-vit-large-patch14"
+
+    echo "Model download check complete."
+else
+    echo "DOWNLOAD_MODELS is false, skipping model downloads."
+fi
+
+echo "Adding environment variables"
 export PYTHONPATH="$REPO_DIR:$REPO_DIR/submodules/HunyuanVideo:$PYTHONPATH"
 export PATH="$REPO_DIR/configs:$PATH"
 export PATH="$REPO_DIR:$PATH"
