@@ -104,6 +104,8 @@ COPY --chmod=755 . /diffusion-pipe
 
 COPY --chmod=755 docker/initialize.sh /initialize.sh
 COPY --chmod=755 docker/entrypoint.sh /entrypoint.sh
+RUN chmod +x /initialize.sh
+RUN chmod +x /entrypoint.sh
 
 # Expose the Gradio port
 EXPOSE $GRADIO_PORT

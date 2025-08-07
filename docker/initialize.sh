@@ -2,8 +2,6 @@
 
 echo "pod started"
 
-
-
 if [[ $PUBLIC_KEY ]]
 then
     mkdir -p ~/.ssh
@@ -15,7 +13,6 @@ then
     service ssh start
 fi
 
-#!/bin/bash
 if [[ -z "${HF_TOKEN}" ]] || [[ "${HF_TOKEN}" == "enter_your_huggingface_token_here" ]]
 then
     echo "HF_TOKEN is not set"
