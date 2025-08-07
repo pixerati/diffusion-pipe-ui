@@ -953,6 +953,64 @@ with gr.Blocks(css=custom_log_box_css) as demo:
         output_dir = os.path.join(OUTPUT_DIR, dataset_name)
         os.makedirs(output_dir, exist_ok=True)
         
+        # Create default dataset configuration
+        try:
+            create_dataset_config(
+                dataset_path=dataset_dir,
+                config_dir=config_dir,
+                num_repeats=10,
+                resolutions=[512],
+                enable_ar_bucket=True,
+                min_ar=0.5,
+                max_ar=2.0,
+                num_ar_buckets=7,
+                frame_buckets=[1, 33, 65],
+                ar_buckets=None
+            )
+            
+            # Create default training configuration
+            create_training_config(
+                output_dir=output_dir,
+                config_dir=config_dir,
+                dataset_config_path=os.path.join(config_dir, "dataset_config.toml"),
+                epochs=1000,
+                batch_size=1,
+                gradient_accumulation_steps=4,
+                gradient_clipping=1.0,
+                warmup_steps=100,
+                eval_every=1,
+                eval_before_first_step=True,
+                eval_micro_batch_size_per_gpu=1,
+                eval_gradient_accumulation_steps=1,
+                save_every=2,
+                checkpoint_every_n_minutes=120,
+                activation_checkpointing=True,
+                partition_method="parameters",
+                save_dtype="bfloat16",
+                caching_batch_size=1,
+                steps_per_print=1,
+                video_clip_mode="single_middle",
+                model_type="hunyuan-video",
+                transformer_path="/workspace/models/hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors",
+                vae_path="/workspace/models/hunyuan_video_vae_fp32.safetensors",
+                llm_path="/workspace/models/llava-llama-3-8b-text-encoder-tokenizer",
+                clip_path="/workspace/models/clip-vit-large-patch14",
+                dtype="bfloat16",
+                rank=32,
+                only_double_blocks=False,
+                optimizer_type="adamw_optimi",
+                lr=2e-5,
+                betas="[0.9, 0.99]",
+                weight_decay=0.01,
+                eps=1e-8,
+                enable_wandb=False,
+                wandb_run_name=None,
+                wandb_tracker_name=None,
+                wandb_api_key=None
+            )
+        except Exception as e:
+            return f"Error creating default configuration: {str(e)}", "", gr.update(visible=True), gr.update(visible=True), ""
+        
         return f"Created new dataset: {dataset_dir}", dataset_dir, gr.update(visible=False), gr.update(visible=True), dataset_dir
     
     # Handle file uploads
