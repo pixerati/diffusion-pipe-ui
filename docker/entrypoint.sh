@@ -109,6 +109,20 @@ if [ "$DOWNLOAD_MODELS" = "true" ]; then
         "${MODEL_DIR}/clip-vit-large-patch14" \
         "openai/clip-vit-large-patch14 --local-dir ${MODEL_DIR}/clip-vit-large-patch14"
 
+    # Download WAN 2.1 T2V 14B model
+    echo "Downloading WAN 2.1 models..."
+    download_model "Wan2.1-T2V-14B" \
+        "${MODEL_DIR}/Wan2.1-T2V-14B" \
+        "Wan-AI/Wan2.1-T2V-14B --local-dir ${MODEL_DIR}/Wan2.1-T2V-14B"
+
+    # Download WAN 2.2 models
+    echo "Downloading WAN 2.2 models..."
+    
+    # Download WAN 2.2 TI2V 5B model (only supported for training)
+    download_model "Wan2.2-TI2V-5B" \
+        "${MODEL_DIR}/Wan2.2-TI2V-5B" \
+        "Wan-AI/Wan2.2-TI2V-5B --local-dir ${MODEL_DIR}/Wan2.2-TI2V-5B"
+
     echo "Model download check complete."
 else
     echo "DOWNLOAD_MODELS is false, skipping model downloads."

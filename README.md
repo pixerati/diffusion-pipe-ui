@@ -113,6 +113,50 @@ docker run --gpus all -it \
   alissonpereiraanjos/diffusion-pipe-interface:latest
 ```
 
+#### Manual Model File Placement
+
+If you want to manually place model files instead of using automatic downloads, place them in the `/workspace/models` directory (or your mounted models directory) with the following structure:
+
+**Automatically Downloaded Models:**
+- `hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors` - Hunyuan Video transformer
+- `hunyuan_video_vae_fp32.safetensors` - Hunyuan Video VAE
+- `hunyuan_video_vae_bf16.safetensors` - Hunyuan Video VAE (BF16 version, optional)
+- `llava-llama-3-8b-text-encoder-tokenizer/` - LLaVA text encoder directory
+- `clip-vit-large-patch14/` - CLIP text encoder directory
+- `Wan2.1-T2V-14B/` - WAN 2.1 14B model directory
+- `Wan2.2-TI2V-5B/` - WAN 2.2 5B model directory
+
+**Other Supported Models (Manual Placement Required):**
+
+**SDXL:**
+- `sd_xl_base_1.0_0.9vae.safetensors` - SDXL base model
+
+**FLUX:**
+- `flux-dev-single-files/consolidated_s6700-schnell.safetensors` - FLUX model
+
+**LTX-Video:**
+- `ltx-video-2b-v0.9.1.safetensors` - LTX-Video model
+
+**Cosmos:**
+- `cosmos/cosmos-1.0-diffusion-7b-text2world.pt` - Cosmos diffusion model
+- `cosmos/cosmos_cv8x8x8_1.0.safetensors` - Cosmos VAE
+- `cosmos/oldt5_xxl_fp16.safetensors` - Cosmos T5 text encoder
+
+**Lumina 2:**
+- `lumina-2-single-files/lumina_2_model_bf16.safetensors` - Lumina 2 model
+- `lumina-2-single-files/flux_vae.safetensors` - Lumina 2 VAE
+- `lumina-2-single-files/gemma_2_2b_fp16.safetensors` - Lumina 2 Gemma text encoder
+
+**Chroma:**
+- `chroma/chroma-unlocked-v10.safetensors` - Chroma model
+
+**Qwen Image:**
+- `comfyui-models/qwen_image_bf16.safetensors` - Qwen Image model
+- `Qwen-Image/vae/diffusion_pytorch_model.safetensors` - Qwen Image VAE
+- `comfyui-models/qwen_2.5_vl_7b.safetensors` - Qwen Image text encoder
+
+**Note:** The LoRA trainer will automatically detect these models when they are placed in the correct locations. Make sure the file names match exactly as shown above.
+
 #### Running in Detached Mode
 
 If you prefer to run the container in the background without an interactive terminal, use `-d`:

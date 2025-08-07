@@ -116,6 +116,109 @@ def create_dataset_config(dataset_path: str,
         toml.dump(dataset_config, f)
     return dataset_path_full
 
+def create_model_config(model_type: str, transformer_path: str, vae_path: str, llm_path: str, clip_path: str, dtype: str):
+    """
+    Create model configuration based on model type.
+    """
+    if model_type == "Hunyuan Video":
+        return {
+            "type": "hunyuan-video",
+            "transformer_path": transformer_path,
+            "vae_path": vae_path,
+            "llm_path": llm_path,
+            "clip_path": clip_path,
+            "dtype": dtype,
+            "transformer_dtype": "float8",
+            "timestep_sample_method": "logit_normal"
+        }
+    elif model_type == "SDXL":
+        return {
+            "type": "sdxl",
+            "checkpoint_path": transformer_path,
+            "dtype": dtype
+        }
+    elif model_type == "Flux":
+        return {
+            "type": "flux",
+            "diffusers_path": os.path.join(MODEL_DIR, "FLUX.1-dev"),
+            "transformer_path": transformer_path,
+            "dtype": dtype,
+            "transformer_dtype": "float8",
+            "flux_shift": True
+        }
+    elif model_type == "LTX-Video":
+        return {
+            "type": "ltx-video",
+            "diffusers_path": os.path.join(MODEL_DIR, "LTX-Video"),
+            "single_file_path": transformer_path,
+            "dtype": dtype,
+            "timestep_sample_method": "logit_normal"
+        }
+    elif model_type == "Cosmos":
+        return {
+            "type": "cosmos",
+            "transformer_path": transformer_path,
+            "vae_path": vae_path,
+            "text_encoder_path": llm_path,
+            "dtype": dtype
+        }
+    elif model_type == "Lumina Image 2.0":
+        return {
+            "type": "lumina_2",
+            "transformer_path": transformer_path,
+            "vae_path": vae_path,
+            "llm_path": llm_path,
+            "dtype": dtype,
+            "lumina_shift": True
+        }
+    elif model_type == "WAN 2.1":
+        return {
+            "type": "wan",
+            "ckpt_path": transformer_path,
+            "dtype": dtype,
+            "transformer_dtype": "float8",
+            "timestep_sample_method": "logit_normal"
+        }
+    elif model_type == "WAN 2.2 TI2V 5B":
+        return {
+            "type": "wan",
+            "ckpt_path": transformer_path,
+            "dtype": dtype,
+            "transformer_dtype": "float8",
+            "timestep_sample_method": "logit_normal"
+        }
+    elif model_type == "Chroma":
+        return {
+            "type": "chroma",
+            "diffusers_path": os.path.join(MODEL_DIR, "FLUX.1-dev"),
+            "transformer_path": transformer_path,
+            "dtype": dtype,
+            "transformer_dtype": "float8",
+            "flux_shift": True
+        }
+    elif model_type == "Qwen Image":
+        return {
+            "type": "qwen_image",
+            "transformer_path": transformer_path,
+            "vae_path": vae_path,
+            "text_encoder_path": llm_path,
+            "dtype": dtype,
+            "transformer_dtype": "float8",
+            "timestep_sample_method": "logit_normal"
+        }
+    else:
+        # Default to Hunyuan Video
+        return {
+            "type": "hunyuan-video",
+            "transformer_path": transformer_path,
+            "vae_path": vae_path,
+            "llm_path": llm_path,
+            "clip_path": clip_path,
+            "dtype": dtype,
+            "transformer_dtype": "float8",
+            "timestep_sample_method": "logit_normal"
+        }
+
 def create_training_config(
     # Main training parameters
     output_dir: str,
@@ -140,6 +243,7 @@ def create_training_config(
     video_clip_mode: str,
     
     # Model parameters
+    model_type: str,
     transformer_path: str,
     vae_path: str,
     llm_path: str,
@@ -190,17 +294,8 @@ def create_training_config(
         "steps_per_print": steps_per_print,
         "video_clip_mode": video_clip_mode,
         "pipeline_stages": num_gpus,
-        # Model configuration with fixed type and sampling method
-        "model": {
-            "type": "hunyuan-video",
-            "transformer_path": transformer_path,
-            "vae_path": vae_path,
-            "llm_path": llm_path,
-            "clip_path": clip_path,
-            "dtype": dtype,
-            "transformer_dtype": "float8",
-            "timestep_sample_method": "logit_normal"
-        },
+        # Model configuration based on model type
+        "model": create_model_config(model_type, transformer_path, vae_path, llm_path, clip_path, dtype),
         # Adapter configuration with fixed type
         "adapter": {
             "type": "lora",
@@ -460,7 +555,7 @@ def toggle_dataset_option(option):
         )
 
 def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
-                transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
+                model_type, transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
                 gradient_accumulation_steps, num_repeats, resolutions, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
                 ):
     try:
@@ -525,6 +620,7 @@ def train_model(dataset_path, config_dir, output_dir, epochs, batch_size, lr, sa
             rank=rank,
             only_double_blocks=only_double_blocks,
             dtype=dtype,
+            model_type=model_type,
             transformer_path=transformer_path,
             vae_path=vae_path,
             llm_path=llm_path,
@@ -1158,6 +1254,89 @@ def get_selected_file(file_paths):
 
     return None, "Invalid or no file selected."
 
+def update_model_paths(model_selection):
+    """
+    Update model paths based on the selected model type.
+    """
+    if model_selection == "Hunyuan Video":
+        return (
+            os.path.join(MODEL_DIR, "hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors"),
+            os.path.join(MODEL_DIR, "hunyuan_video_vae_fp32.safetensors"),
+            os.path.join(MODEL_DIR, "llava-llama-3-8b-text-encoder-tokenizer"),
+            os.path.join(MODEL_DIR, "clip-vit-large-patch14")
+        )
+    elif model_selection == "SDXL":
+        return (
+            os.path.join(MODEL_DIR, "sd_xl_base_1.0_0.9vae.safetensors"),
+            "",  # SDXL uses checkpoint path
+            "",  # SDXL uses checkpoint path
+            ""   # SDXL uses checkpoint path
+        )
+    elif model_selection == "Flux":
+        return (
+            os.path.join(MODEL_DIR, "flux-dev-single-files/consolidated_s6700-schnell.safetensors"),
+            "",  # Flux uses diffusers path
+            "",  # Flux uses diffusers path
+            ""   # Flux uses diffusers path
+        )
+    elif model_selection == "LTX-Video":
+        return (
+            os.path.join(MODEL_DIR, "ltx-video-2b-v0.9.1.safetensors"),
+            "",  # LTX-Video uses single file path
+            "",  # LTX-Video uses single file path
+            ""   # LTX-Video uses single file path
+        )
+    elif model_selection == "Cosmos":
+        return (
+            os.path.join(MODEL_DIR, "cosmos/cosmos-1.0-diffusion-7b-text2world.pt"),
+            os.path.join(MODEL_DIR, "cosmos/cosmos_cv8x8x8_1.0.safetensors"),
+            os.path.join(MODEL_DIR, "cosmos/oldt5_xxl_fp16.safetensors"),
+            ""   # Cosmos doesn't use CLIP
+        )
+    elif model_selection == "Lumina Image 2.0":
+        return (
+            os.path.join(MODEL_DIR, "lumina-2-single-files/lumina_2_model_bf16.safetensors"),
+            os.path.join(MODEL_DIR, "lumina-2-single-files/flux_vae.safetensors"),
+            os.path.join(MODEL_DIR, "lumina-2-single-files/gemma_2_2b_fp16.safetensors"),
+            ""   # Lumina doesn't use CLIP
+        )
+    elif model_selection == "WAN 2.1":
+        return (
+            os.path.join(MODEL_DIR, "Wan2.1-T2V-14B"),
+            "",  # WAN models use checkpoint path
+            "",  # WAN models use checkpoint path
+            ""   # WAN models use checkpoint path
+        )
+    elif model_selection == "WAN 2.2 TI2V 5B":
+        return (
+            os.path.join(MODEL_DIR, "Wan2.2-TI2V-5B"),
+            "",  # WAN models use checkpoint path
+            "",  # WAN models use checkpoint path
+            ""   # WAN models use checkpoint path
+        )
+    elif model_selection == "Chroma":
+        return (
+            os.path.join(MODEL_DIR, "chroma/chroma-unlocked-v10.safetensors"),
+            "",  # Chroma uses diffusers path
+            "",  # Chroma uses diffusers path
+            ""   # Chroma uses diffusers path
+        )
+    elif model_selection == "Qwen Image":
+        return (
+            os.path.join(MODEL_DIR, "comfyui-models/qwen_image_bf16.safetensors"),
+            os.path.join(MODEL_DIR, "Qwen-Image/vae/diffusion_pytorch_model.safetensors"),
+            os.path.join(MODEL_DIR, "comfyui-models/qwen_2.5_vl_7b.safetensors"),
+            ""   # Qwen Image doesn't use CLIP
+        )
+    else:
+        # Default to Hunyuan Video
+        return (
+            os.path.join(MODEL_DIR, "hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors"),
+            os.path.join(MODEL_DIR, "hunyuan_video_vae_fp32.safetensors"),
+            os.path.join(MODEL_DIR, "llava-llama-3-8b-text-encoder-tokenizer"),
+            os.path.join(MODEL_DIR, "clip-vit-large-patch14")
+        )
+
 # Gradio Interface
 with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
     gr.Markdown("# LoRA Training Interface for Hunyuan Video")
@@ -1358,16 +1537,44 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
         outputs=[config_dir, output_dir]
     )
     
+    # Connect model selection to update model paths
+    model_selection.change(
+        fn=update_model_paths,
+        inputs=model_selection,
+        outputs=[transformer_path, vae_path, llm_path, clip_path]
+    )
+    
     
     
     # Handle Models Configurations
     gr.Markdown("#### Models Configurations")
+    
+    # Model selection dropdown
+    with gr.Row():
+                    model_selection = gr.Dropdown(
+                        label="Model Type",
+                        choices=[
+                            "SDXL",
+                            "Flux",
+                            "LTX-Video",
+                            "Hunyuan Video",
+                            "Cosmos",
+                            "Lumina Image 2.0",
+                            "WAN 2.1",
+                            "WAN 2.2 TI2V 5B",
+                            "Chroma",
+                            "Qwen Image"
+                        ],
+                        value="Hunyuan Video",
+                        info="Select the model type for training"
+                    )
+    
     with gr.Row():
         with gr.Column():
             transformer_path = gr.Textbox(
                 label="Transformer Path",
                 value=os.path.join(MODEL_DIR, "hunyuan_video_720_cfgdistill_fp8_e4m3fn.safetensors"),
-                info="Path to the transformer model weights for Hunyuan Video."
+                info="Path to the transformer model weights."
             )
             vae_path = gr.Textbox(
                 label="VAE Path",
@@ -1694,7 +1901,7 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
     
     def handle_train_click(
         dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
-        transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
+        model_type, transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
         gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
     ):
         
@@ -1704,7 +1911,7 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
             
         message, pid = train_model(
             dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
-            transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
+            model_type, transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
             gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar, num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step, eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes, activation_checkpointing, partition_method, save_dtype, caching_batch_size, steps_per_print, video_clip_mode, resume_from_checkpoint, only_double_blocks, enable_wandb, wandb_run_name, wandb_tracker_name, wandb_api_key
         )
         
@@ -1825,7 +2032,7 @@ with gr.Blocks(theme=theme, css=custom_log_box_css) as demo:
         fn=handle_train_click,
         inputs=[
             dataset_path, config_dir, output_dir, epochs, batch_size, lr, save_every, eval_every, rank, dtype,
-            transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
+            model_selection, transformer_path, vae_path, llm_path, clip_path, optimizer_type, betas, weight_decay, eps,
             gradient_accumulation_steps, num_repeats, resolutions_input, enable_ar_bucket, min_ar, max_ar,
             num_ar_buckets, frame_buckets, ar_buckets, gradient_clipping, warmup_steps, eval_before_first_step,
             eval_micro_batch_size_per_gpu, eval_gradient_accumulation_steps, checkpoint_every_n_minutes,
