@@ -25,6 +25,11 @@ import pathlib
 import multiprocessing as mp_std
 mp_std.set_start_method("fork", force=True)
 
+# needed for broadcasting Queue in dataset.py
+mp.current_process().authkey = b'afsaskgfdjh4'
+
+wandb_enable = False
+
 from utils import dataset as dataset_util
 from utils import common
 from utils.common import is_main_process, get_rank, DTYPE_MAP, empty_cuda_cache
@@ -43,9 +48,10 @@ parser.add_argument('--local_rank', type=int, default=-1,
                     help='local rank passed from distributed launcher')
 parser.add_argument('--resume_from_checkpoint', nargs='?', const=True, default=None,
                     help='resume training from checkpoint. If no value is provided, resume from the most recent checkpoint. If a folder name is provided, resume from that specific folder.')
-parser.add_argument('--regenerate_cache', action='store_true', default=None, help='Force regenerate cache. Useful if none of the files have changed but their contents have, e.g. modified captions.')
-parser.add_argument('--cache_only', action='store_true', default=None, help='Cache model inputs then exit.')
-parser.add_argument('--i_know_what_i_am_doing', action='store_true', default=None, help="Skip certain checks and overrides. You may end up using settings that won't work.")
+parser.add_argument('--regenerate_cache', action='store_true', help='Force regenerate cache.')
+parser.add_argument('--cache_only', action='store_true', help='Cache model inputs then exit.')
+parser.add_argument('--trust_cache', action='store_true', help='Load from metadata cache files if they exist, without checking if any fingerprints have changed. Can make loading much faster for large datasets.')
+parser.add_argument('--i_know_what_i_am_doing', action='store_true', help="Skip certain checks and overrides. You may end up using settings that won't work.")
 parser.add_argument('--master_port', type=int, default=29500, help='Master port for distributed training')
 parser.add_argument('--dump_dataset', type=Path, default=None, help='Decode cached latents and dump the dataset to this directory.')
 parser = deepspeed.add_config_arguments(parser)
@@ -217,6 +223,17 @@ def get_prodigy_d(optimizer):
     return d / len(optimizer.param_groups)
 
 
+def _get_automagic_lrs(optimizer):
+    lrs = []
+    for group in optimizer.param_groups:
+        for p in group['params']:
+            state = optimizer.state[p]
+            lr = optimizer._get_lr(group, state)
+            lrs.append(lr)
+    lrs = torch.stack(lrs)
+    return lrs, lrs.mean()
+
+
 if __name__ == '__main__':
     apply_patches()
 
@@ -274,6 +291,18 @@ if __name__ == '__main__':
     elif model_type == 'chroma':
         from models import chroma
         model = chroma.ChromaPipeline(config)
+    elif model_type == 'hidream':
+        from models import hidream
+        model = hidream.HiDreamPipeline(config)
+    elif model_type == 'sd3':
+        from models import sd3
+        model = sd3.SD3Pipeline(config)
+    elif model_type == 'omnigen2':
+        from models import omnigen2
+        model = omnigen2.OmniGen2Pipeline(config)
+    elif model_type == 'qwen_image':
+        from models import qwen_image
+        model = qwen_image.QwenImagePipeline(config)
     else:
         raise NotImplementedError(f'Model type {model_type} is not implemented')
 

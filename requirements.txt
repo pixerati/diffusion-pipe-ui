@@ -30,3 +30,4 @@ sageattention==1.0.6
 easydict
 ftfy
 pytorch-optimizer
+optimum-quanto

@@ -53,6 +53,12 @@ RUN wget https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh -
     rm miniconda.sh && \
     $CONDA_DIR/bin/conda init bash
 
+# Accept Anaconda ToS for all required default channels
+RUN $CONDA_DIR/bin/conda config --set auto_update_conda false && \
+    $CONDA_DIR/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/main && \
+    $CONDA_DIR/bin/conda tos accept --override-channels --channel https://repo.anaconda.com/pkgs/r
+
+
 # Create environment with Python 3.12 and MPI
 RUN $CONDA_DIR/bin/conda create -n pyenv python=3.12 -y && \
     $CONDA_DIR/bin/conda install -n pyenv -c conda-forge openmpi mpi4py -y 
